@@ -1,15 +1,13 @@
-use gst::{self, prelude::*};
 use image::{ImageBuffer, RgbImage};
 use rayon::prelude::*;
-use std::path::PathBuf;
+use std::path::{PathBuf, Path};
 use std::time::Instant;
 use video_rs::decode::Decoder;
+use video_rs::Reader;
 
 fn main() {
-    gst::init().unwrap();
-
-    let use_metal = true;
-    let use_cuda = false;
+    tracing_subscriber::fmt::init();
+    video_rs::init().unwrap();
 
     let start = Instant::now();
 
@@ -21,6 +19,10 @@ fn main() {
     let duration_seconds = duration_time.as_secs_f64();
 
     let (width, height) = decoder.size();
+
+    let reader = Reader::new(Path::new("video.mp4")).unwrap();
+    let stream = reader.best_video_stream_index().unwrap();
+    println!("best_video_stream_index: {stream}");
 
     println!("Width: {width}, height: {height}");
 
@@ -36,7 +38,7 @@ fn main() {
 
     println!("FPS: {fps}");
 
-    let mut frames_decoded: Vec<Vec<u8>> = Vec::new();
+    let mut frames_decoded = Vec::new();
 
     let duration_in_seconds = duration_seconds.round() as i32;
     for second in 0..duration_in_seconds {
@@ -48,7 +50,8 @@ fn main() {
 
                 match decoder.decode() {
                     Ok((ts, frame)) => {
-                        println!("{}", ts.as_secs_f64());
+                        let frame_time = ts.as_secs_f64();
+                        println!("Frame time: {frame_time}");
 
                         let rgb = frame.to_owned().into_raw_vec_and_offset().0;
 
@@ -66,10 +69,16 @@ fn main() {
     }
 
     println!("Elapsed: {:.2?}", start.elapsed());
+    println!("RGBs: {}", frames_decoded.len());
 
-    unsafe {
-        gst::deinit();
-    }
+    let start = Instant::now();
+    frames_decoded.par_iter().enumerate().for_each(|(n, rgb)| {
+        let path = PathBuf::from(format!("frames/{n}.png"));
+        let rgb_data = rgb.to_vec();
+
+        save_rgb_vec_to_image(rgb_data, width, height, &path);
+    });
+    println!("Elapsed saving: {:.2?}", start.elapsed());
 }
 
 fn save_rgb_vec_to_image(raw_pixels: Vec<u8>, width: u32, height: u32, path: &PathBuf) {
