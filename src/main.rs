@@ -1,84 +1,113 @@
+use gst::{self, prelude::*};
 use image::{ImageBuffer, RgbImage};
-use rayon::prelude::*;
-use std::path::{PathBuf, Path};
+use std::path::PathBuf;
 use std::time::Instant;
-use video_rs::decode::Decoder;
-use video_rs::Reader;
 
 fn main() {
-    tracing_subscriber::fmt::init();
-    video_rs::init().unwrap();
+    gst::init().unwrap();
+
+    let use_metal = true;
+    let use_cuda = false;
 
     let start = Instant::now();
 
-    let source = PathBuf::from("video.mp4");
-    let mut decoder = Decoder::new(source).expect("failed to create decoder");
+    let mut frames_decoded = 0;
+    let filename = String::from("video.mp4");
 
-    let fps = f64::from(decoder.frame_rate());
-    let duration_time = decoder.duration().unwrap();
-    let duration_seconds = duration_time.as_secs_f64();
+    // Assuming original video is 30fps and you want 1fps (every 30th frame)
+    // You need to know the source framerate for this to work precisely.
+    // If source is not 30fps, adjust the `max-rate` accordingly.
+    let mut pipeline_cmd = format!(
+        "filesrc location={filename} ! queue ! decodebin ! videoconvert ! videorate ! video/x-raw,format=RGB,framerate=1/1 ! appsink name=mysink"
+    );
 
-    let (width, height) = decoder.size();
-
-    let reader = Reader::new(Path::new("video.mp4")).unwrap();
-    let stream = reader.best_video_stream_index().unwrap();
-    println!("best_video_stream_index: {stream}");
-
-    println!("Width: {width}, height: {height}");
-
-    if duration_seconds < 0.0 {
-        let frame_count = decoder.frames().unwrap() as f64;
-        let duration_seconds = if fps > 0.0 { frame_count / fps } else { 0.0 };
-
-        println!("Frame count: {frame_count}");
-        println!("Estimated duration (from frames): {duration_seconds} seconds");
-    } else {
-        println!("Duration: {duration_seconds} seconds");
+    if use_metal {
+        pipeline_cmd = format!(
+            "filesrc location={filename} ! queue ! qtdemux ! h264parse ! vtdec ! videoconvert ! videorate ! video/x-raw,format=RGB,framerate=1/1 ! appsink name=mysink"
+        );
+    } else if use_cuda {
+        pipeline_cmd = format!(
+            "filesrc location={filename} ! queue ! qtdemux ! h264parse ! nvh264dec ! nvvideoconvert ! videorate ! video/x-raw,format=RGB,framerate=1/1 ! appsink name=mysink"
+        );
     }
 
-    println!("FPS: {fps}");
+    println!("Using pipeline: {pipeline_cmd}");
 
-    let mut frames_decoded = Vec::new();
+    let pipeline = gst::parse_launch(&pipeline_cmd).unwrap();
 
-    let duration_in_seconds = duration_seconds.round() as i32;
-    for second in 0..duration_in_seconds {
-        let frame_number = (f64::from(second) * fps).round() as i64;
+    let pipeline = pipeline
+        .downcast::<gst::Pipeline>()
+        .expect("Couldn't downcast pipeline");
 
-        match decoder.seek_to_frame(frame_number) {
-            Ok(()) => {
-                println!("Successfully sought to frame near index {frame_number}.");
+    let appsink = pipeline
+        .by_name("mysink")
+        .expect("Appsink element not found")
+        .downcast::<gst_app::AppSink>()
+        .expect("Element is not an AppSink");
 
-                match decoder.decode() {
-                    Ok((ts, frame)) => {
-                        let frame_time = ts.as_secs_f64();
-                        println!("Frame time: {frame_time}");
+    let width = 1920;
+    let height = 1080;
 
-                        let rgb = frame.to_owned().into_raw_vec_and_offset().0;
+    match pipeline.set_state(gst::State::Playing) {
+        Ok(res) => {
+            println!("Result: {res:?}");
+        }
+        Err(err) => {
+            eprintln!("Error: {err:?}");
+        }
+    }
 
-                        frames_decoded.push(rgb);
-                    }
-                    Err(e) => {
-                        eprintln!("Error decoding frame: {e}");
-                    }
-                }
+    println!("Pipeline started with videorate. Pulling frames...");
+
+    loop {
+        match appsink.pull_sample() {
+            Ok(sample) => {
+                let buffer = sample.buffer().expect("Failed to get buffer from sample");
+                let caps = sample.caps().expect("Failed to get caps from sample");
+                let info = gst_video::VideoInfo::from_caps(caps)
+                    .expect("Failed to parse video info from caps");
+
+                let map = buffer
+                    .map_readable()
+                    .expect("Failed to map buffer readable");
+                let frame_data = map.as_slice();
+                let frame_rgb = frame_data.to_vec();
+
+                println!(
+                    "Processed frames {}: Format: {:?}, Size: {}x{}, Data length: {}",
+                    frames_decoded,
+                    info.format(),
+                    info.width(),
+                    info.height(),
+                    frame_data.len()
+                );
+
+                let path = PathBuf::from(format!("frames/{frames_decoded}.png"));
+                save_rgb_vec_to_image(frame_rgb, width, height, &path);
+
+                frames_decoded += 1;
             }
-            Err(e) => {
-                eprintln!("Error seeking to frame: {e}");
+            Err(err) => {
+                eprintln!("Error pulling sample: {err:?}");
+                break;
             }
         }
     }
 
+    match pipeline.set_state(gst::State::Null) {
+        Ok(res) => {
+            println!("Result: {res:?}");
+        }
+        Err(err) => {
+            eprintln!("Error: {err:?}");
+        }
+    }
+
     println!("Elapsed: {:.2?}", start.elapsed());
-    println!("RGBs: {}", frames_decoded.len());
 
-    let start = Instant::now();
-    frames_decoded.par_iter().enumerate().for_each(|(n, rgb)| {
-        let path = PathBuf::from(format!("frames/{n}.png"));
-        let rgb_data = rgb.to_vec();
-
-        save_rgb_vec_to_image(rgb_data, width, height, &path);
-    });
-    println!("Elapsed saving: {:.2?}", start.elapsed());
+    unsafe {
+        gst::deinit();
+    }
 }
 
 fn save_rgb_vec_to_image(raw_pixels: Vec<u8>, width: u32, height: u32, path: &PathBuf) {
