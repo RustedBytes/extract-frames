@@ -41,23 +41,23 @@ fn main() {
 
         match decoder.seek_to_frame(frame_number) {
             Ok(()) => {
-                println!("Successfully sought to frame near index {frame_number}.",);
+                println!("Successfully sought to frame near index {frame_number}.");
+
+                match decoder.decode() {
+                    Ok((ts, frame)) => {
+                        println!("{}", ts.as_secs_f64());
+
+                        let rgb = frame.to_owned().into_raw_vec_and_offset().0;
+
+                        frames_decoded.push(rgb);
+                    }
+                    Err(e) => {
+                        eprintln!("Error decoding frame: {e}");
+                    }
+                }
             }
             Err(e) => {
                 eprintln!("Error seeking to frame: {e}");
-            }
-        }
-
-        match decoder.decode() {
-            Ok((ts, frame)) => {
-                println!("{}", ts.as_secs_f64());
-
-                let rgb = frame.to_owned().into_raw_vec_and_offset().0;
-
-                frames_decoded.push(rgb);
-            }
-            Err(e) => {
-                eprintln!("Error decoding frame: {e}");
             }
         }
     }
