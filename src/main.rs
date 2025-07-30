@@ -1,8 +1,9 @@
 use image::{ImageBuffer, RgbImage};
 use rayon::prelude::*;
-use std::path::PathBuf;
+use std::path::{PathBuf, Path};
 use std::time::Instant;
 use video_rs::decode::Decoder;
+use video_rs::Reader;
 
 fn main() {
     tracing_subscriber::fmt::init();
@@ -19,6 +20,10 @@ fn main() {
 
     let (width, height) = decoder.size();
 
+    let reader = Reader::new(Path::new("video.mp4")).unwrap();
+    let stream = reader.best_video_stream_index().unwrap();
+    println!("best_video_stream_index: {stream}");
+
     println!("Width: {width}, height: {height}");
 
     if duration_seconds < 0.0 {
@@ -33,7 +38,7 @@ fn main() {
 
     println!("FPS: {fps}");
 
-    let mut frames_decoded: Vec<Vec<u8>> = Vec::new();
+    let mut frames_decoded = Vec::new();
 
     let duration_in_seconds = duration_seconds.round() as i32;
     for second in 0..duration_in_seconds {
@@ -45,7 +50,8 @@ fn main() {
 
                 match decoder.decode() {
                     Ok((ts, frame)) => {
-                        println!("{}", ts.as_secs_f64());
+                        let frame_time = ts.as_secs_f64();
+                        println!("Frame time: {frame_time}");
 
                         let rgb = frame.to_owned().into_raw_vec_and_offset().0;
 
