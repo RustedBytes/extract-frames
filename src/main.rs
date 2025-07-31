@@ -28,11 +28,11 @@ fn get_files(pattern: &str) -> Vec<PathBuf> {
         .expect("Failed to read glob pattern")
         .filter_map(|entry| {
             match entry {
-                | Ok(path) => {
+                Ok(path) => {
                     debug!("Found segment: {}", path.display());
                     Some(path)
                 },
-                | Err(e) => {
+                Err(e) => {
                     error!("Error processing path: {e:?}");
                     None
                 },
@@ -41,11 +41,11 @@ fn get_files(pattern: &str) -> Vec<PathBuf> {
         .collect()
 }
 
-fn remove_files(files_to_remove: Vec<PathBuf>) -> Result<(), Vec<Error>> {
+fn remove_files(files_to_remove: &[PathBuf]) -> Result<(), Vec<Error>> {
     let errors: Vec<_> = files_to_remove
-        .into_iter()
+        .iter()
         .filter_map(|path| {
-            if let Err(err) = fs::remove_file(&path) {
+            if let Err(err) = fs::remove_file(path) {
                 error!("Failed to remove file {}: {}", path.display(), err);
                 Some(err)
             } else {
@@ -64,11 +64,11 @@ fn cleanup() {
         .flat_map(|pattern| get_files(pattern))
         .collect();
 
-    match remove_files(files.clone()) {
-        | Ok(()) => {
+    match remove_files(&files) {
+        Ok(()) => {
             info!("All previous files {} items were successfully removed.", files.len());
         },
-        | Err(errors) => {
+        Err(errors) => {
             error!("Encountered {} errors during file cleanup.", errors.len());
         },
     }
@@ -76,10 +76,10 @@ fn cleanup() {
 
 fn remove_folder(path: &str) {
     match fs::remove_dir_all(path) {
-        | Ok(()) => {
+        Ok(()) => {
             debug!("Successfully removed folder: {path}");
         },
-        | Err(e) => {
+        Err(e) => {
             error!("Error removing folder: {e}");
         },
     }
@@ -115,7 +115,7 @@ fn split_into_segments(source: &Path) -> Vec<PathBuf> {
         .spawn();
 
     match result {
-        | Ok(mut child_process) => {
+        Ok(mut child_process) => {
             info!("Waiting for ffmpeg (PID: {}) to finish...", child_process.id());
 
             let status = child_process.wait().expect("Failed to wait for process");
@@ -127,7 +127,7 @@ fn split_into_segments(source: &Path) -> Vec<PathBuf> {
                 panic!("ffmpeg failed with exit code: {}", status.code().unwrap_or(-1));
             }
         },
-        | Err(e) => {
+        Err(e) => {
             error!("Failed to start ffmpeg process: {e}");
         },
     }
@@ -152,7 +152,7 @@ fn read_by_dropping(prefix: &str, source: &Path) {
         .filter(|(n, _)| n.is_multiple_of(FRAME_SKIP))
     {
         match frame_result {
-            | Ok((ts, frame)) => {
+            Ok((ts, frame)) => {
                 let frame_time = ts.as_secs_f64();
                 debug!("Frame time: {frame_time}");
 
@@ -161,7 +161,7 @@ fn read_by_dropping(prefix: &str, source: &Path) {
 
                 save_rgb_to_image(&rgb, width, height, &path);
             },
-            | Err(e) => {
+            Err(e) => {
                 if let DecodeExhausted = e {
                     info!("Decoding finished, stream exhausted");
                     break;
@@ -209,11 +209,11 @@ fn read_by_seeks() {
         let frame_number = second * fps_c;
 
         match decoder.seek_to_frame(frame_number) {
-            | Ok(()) => {
+            Ok(()) => {
                 debug!("Successfully sought to frame near index {frame_number}.");
 
                 match decoder.decode() {
-                    | Ok((ts, frame)) => {
+                    Ok((ts, frame)) => {
                         let frame_time = ts.as_secs_f64();
                         debug!("Frame time: {frame_time}");
 
@@ -221,12 +221,12 @@ fn read_by_seeks() {
 
                         frames_decoded.push(rgb);
                     },
-                    | Err(e) => {
+                    Err(e) => {
                         error!("Error decoding frame: {e}");
                     },
                 }
             },
-            | Err(e) => {
+            Err(e) => {
                 error!("Error seeking to frame: {e}");
             },
         }
@@ -253,8 +253,8 @@ fn save_rgb_to_image(raw_pixels: &[u8], width: u32, height: u32, path: &Path) {
     };
 
     match img_buffer.save(path) {
-        | Ok(()) => debug!("Image successfully saved to {}", path.display()),
-        | Err(e) => error!("Error saving image: {e}"),
+        Ok(()) => debug!("Image successfully saved to {}", path.display()),
+        Err(e) => error!("Error saving image: {e}"),
     }
 }
 
