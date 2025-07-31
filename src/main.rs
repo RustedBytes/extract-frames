@@ -74,6 +74,17 @@ fn cleanup() {
     }
 }
 
+fn remove_folder(path: &str) {
+    match fs::remove_dir_all(path) {
+        | Ok(()) => {
+            debug!("Successfully removed folder: {path}");
+        },
+        | Err(e) => {
+            error!("Error removing folder: {e}");
+        },
+    }
+}
+
 fn split_into_segments(source: &Path) -> Vec<PathBuf> {
     let source_path = source.to_str().expect("failed to convert to &str");
 
@@ -251,6 +262,9 @@ fn main() {
     tracing_subscriber::fmt::init();
     video_rs::init().expect("video-rs failed to initialize");
 
+    fs::create_dir_all("frames").expect("failed to create frames directory");
+    fs::create_dir_all("segments").expect("failed to create segments directory");
+
     cleanup();
 
     if USE_MULTICORE {
@@ -267,6 +281,8 @@ fn main() {
         });
 
         info!("Elapsed total: {:.2?}", start.elapsed());
+
+        remove_folder("segments");
 
         return;
     }
