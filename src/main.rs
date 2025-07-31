@@ -22,21 +22,19 @@ const SEGMENT_OUTPUT_PATTERN: &str = "segments/output_%09d.mp4";
 const TEST_FILE: &str = "video.webm";
 
 fn get_files(pattern: &str) -> Vec<PathBuf> {
-    let mut segments = Vec::new();
-
-    let paths = glob(pattern).expect("Failed to read glob pattern");
-
-    for entry in paths {
-        match entry {
+    glob(pattern)
+        .expect("Failed to read glob pattern")
+        .filter_map(|entry| match entry {
             Ok(path) => {
                 debug!("Found segment: {}", path.display());
-                segments.push(path);
+                Some(path)
             }
-            Err(e) => error!("Error processing path: {e:?}"),
-        }
-    }
-
-    segments
+            Err(e) => {
+                error!("Error processing path: {e:?}");
+                None
+            }
+        })
+        .collect()
 }
 
 fn remove_files(files_to_remove: Vec<PathBuf>) -> Result<(), Vec<Error>> {
