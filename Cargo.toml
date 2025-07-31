@@ -14,12 +14,12 @@ tracing = "0.1.41"
 tracing-subscriber = "0.3.19"
 video-rs = { version = "0.10.3", features = ["ndarray"] }
 
+[dev-dependencies]
+hoox = "0.3.0"
+
 [profile.dev]
 debug = false
 
 [profile.release]
 debug = false
 strip = true
-
-[dev-dependencies]
-hoox = "0.3.0"
