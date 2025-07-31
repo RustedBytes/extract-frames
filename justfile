@@ -1,4 +1,4 @@
-check:
+check: fmt
     cargo clippy -- -W clippy::pedantic
 
 check_fmt:
@@ -13,5 +13,5 @@ test:
 doc:
     cargo doc --open
 
-release:
+release: check
     cargo build --release

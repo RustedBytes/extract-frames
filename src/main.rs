@@ -1,3 +1,5 @@
+use std::fs;
+use std::io::Error;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::Instant;
@@ -8,58 +10,93 @@ use log::{debug, error, info};
 use num_traits::cast;
 use rayon::prelude::*;
 use video_rs::decode::Decoder;
+use video_rs::error::Error::DecodeExhausted;
 
-fn main() {
-    tracing_subscriber::fmt::init();
-    video_rs::init().unwrap();
+const USE_SEEK: bool = false;
+const USE_MULTICORE: bool = true;
+const FRAME_SKIP: usize = 30;
 
-    let use_seek = false;
-    let use_multicore = true;
+const SEGMENT_TIME: &str = "5";
+const SEGMENT_OUTPUT_PATTERN: &str = "segments/output_%09d.mp4";
 
-    if use_multicore {
-        let filename = PathBuf::from("video.mp4");
-        let segments = split_into_segments(&filename);
+const TEST_FILE: &str = "video.webm";
 
-        info!("Segments: {}", segments.len());
+fn get_files(pattern: &str) -> Vec<PathBuf> {
+    let mut segments = Vec::new();
 
-        let start = Instant::now();
-        segments.par_iter().enumerate().for_each(|(n, path)| {
-            let prefix = format!("segment-{n}");
+    let paths = glob(pattern).expect("Failed to read glob pattern");
 
-            read_by_dropping(prefix.as_str(), path.clone());
-        });
-
-        info!("Elapsed total: {:.2?}", start.elapsed());
-
-        return;
+    for entry in paths {
+        match entry {
+            Ok(path) => {
+                debug!("Found segment: {}", path.display());
+                segments.push(path);
+            }
+            Err(e) => error!("Error processing path: {e:?}"),
+        }
     }
 
-    if use_seek {
-        // seems like this method does not work
-        read_by_seeks();
+    segments
+}
+
+fn remove_files(files_to_remove: Vec<PathBuf>) -> Result<(), Vec<Error>> {
+    let mut errors = Vec::new();
+
+    for path in files_to_remove {
+        match fs::remove_file(&path) {
+            Ok(()) => {
+                debug!("Successfully removed file: {}", path.display());
+            }
+            Err(e) => {
+                error!("Failed to remove file {}: {}", path.display(), e);
+                errors.push(e);
+            }
+        }
+    }
+
+    if errors.is_empty() {
+        Ok(())
     } else {
-        let filename = PathBuf::from("video.webm");
-        read_by_dropping("full", filename);
+        Err(errors)
+    }
+}
+
+fn cleanup() {
+    let mut files = Vec::new();
+    files.extend(get_files("frames/*.png"));
+    files.extend(get_files("segments/*.mp4"));
+
+    let total_files = files.len();
+
+    match remove_files(files) {
+        Ok(()) => {
+            info!("All previous files ({total_files}) were removed.");
+        }
+        Err(e) => {
+            error!("Encountered {} errors during frame file removal.", e.len());
+        }
     }
 }
 
 fn split_into_segments(source: &Path) -> Vec<PathBuf> {
+    let source_path = source.to_str().expect("failed to convert to &str");
+
     let args = [
         "-v",
         "quiet",
         "-i",
-        source.to_str().unwrap(),
+        source_path,
         "-c",
         "copy",
         "-map",
         "0",
         "-segment_time",
-        "5",
+        SEGMENT_TIME,
         "-f",
         "segment",
         "-reset_timestamps",
         "1",
-        "segments/output_%03d.mp4",
+        SEGMENT_OUTPUT_PATTERN,
     ];
 
     info!("Starting ffmpeg process in the background...");
@@ -84,7 +121,7 @@ fn split_into_segments(source: &Path) -> Vec<PathBuf> {
             if status.success() {
                 info!("ffmpeg completed successfully!");
             } else {
-                error!(
+                panic!(
                     "ffmpeg failed with exit code: {}",
                     status.code().unwrap_or(-1)
                 );
@@ -95,24 +132,10 @@ fn split_into_segments(source: &Path) -> Vec<PathBuf> {
         }
     }
 
-    let mut segments = Vec::new();
-    let paths = glob("segments/*.mp4").expect("Failed to read glob pattern");
-
-    for entry in paths {
-        match entry {
-            Ok(path) => {
-                info!("Found segment: {}", path.display());
-
-                segments.push(path);
-            }
-            Err(e) => error!("Error processing path: {e:?}"),
-        }
-    }
-
-    segments
+    get_files("segments/*.mp4")
 }
 
-fn read_by_dropping(prefix: &str, source: PathBuf) {
+fn read_by_dropping(prefix: &str, source: &Path) {
     let start = Instant::now();
 
     let mut decoder = Decoder::new(source).expect("failed to create decoder");
@@ -123,22 +146,28 @@ fn read_by_dropping(prefix: &str, source: PathBuf) {
     debug!("Width: {width}, height: {height}");
     debug!("FPS: {fps}");
 
-    for (n, frame) in decoder.decode_iter().enumerate() {
-        if !n.is_multiple_of(30) {
-            debug!("skipping {n} frame, prefix: {prefix}");
-            continue;
-        }
+    for (n, frame_result) in decoder
+        .decode_iter()
+        .enumerate()
+        .filter(|(n, _)| n.is_multiple_of(FRAME_SKIP))
+    {
+        match frame_result {
+            Ok((ts, frame)) => {
+                let frame_time = ts.as_secs_f64();
+                debug!("Frame time: {frame_time}");
 
-        if let Ok((ts, frame)) = frame {
-            let frame_time = ts.as_secs_f64();
-            debug!("Frame time: {frame_time}");
+                let rgb = frame.to_owned().into_raw_vec_and_offset().0;
+                let path = PathBuf::from(format!("frames/{prefix}_{n}.png"));
 
-            let rgb = frame.to_owned().into_raw_vec_and_offset().0;
-            let path = PathBuf::from(format!("frames/{prefix}_{n}.png"));
-
-            save_rgb_to_image(&rgb, width, height, path.as_path());
-        } else {
-            break;
+                save_rgb_to_image(&rgb, width, height, &path);
+            }
+            Err(e) => {
+                if let DecodeExhausted = e {
+                    info!("Decoding finished, stream exhausted");
+                    break;
+                }
+                error!("Decoding failed: {e:?}");
+            }
         }
     }
 
@@ -148,18 +177,19 @@ fn read_by_dropping(prefix: &str, source: PathBuf) {
 fn read_by_seeks() {
     let start = Instant::now();
 
-    let source = PathBuf::from("video.mp4");
+    let source = PathBuf::from(TEST_FILE);
     let mut decoder = Decoder::new(source).expect("failed to create decoder");
 
     let fps = f64::from(decoder.frame_rate());
-    let duration_time = decoder.duration().unwrap();
+    let duration_time = decoder.duration().expect("failed to get duration");
     let duration_seconds = duration_time.as_secs_f64();
     let (width, height) = decoder.size();
 
     debug!("Width: {width}, height: {height}");
 
     if duration_seconds < 0.0 {
-        let frame_count = cast(decoder.frames().unwrap()).unwrap_or(0);
+        let n_frames = decoder.frames().expect("failed to get number of frames");
+        let frame_count = cast(n_frames).unwrap_or(0);
         let duration_seconds = if fps > 0.0 {
             f64::from(frame_count) / fps
         } else {
@@ -232,5 +262,38 @@ fn save_rgb_to_image(raw_pixels: &[u8], width: u32, height: u32, path: &Path) {
     match img_buffer.save(path) {
         Ok(()) => debug!("Image successfully saved to {}", path.display()),
         Err(e) => error!("Error saving image: {e}"),
+    }
+}
+
+fn main() {
+    tracing_subscriber::fmt::init();
+    video_rs::init().expect("video-rs failed to initialize");
+
+    cleanup();
+
+    if USE_MULTICORE {
+        let filename = PathBuf::from(TEST_FILE);
+        let segments = split_into_segments(&filename);
+
+        info!("Segments: {}", segments.len());
+
+        let start = Instant::now();
+        segments.par_iter().enumerate().for_each(|(n, path)| {
+            let prefix = format!("segment-{n}");
+
+            read_by_dropping(prefix.as_str(), path);
+        });
+
+        info!("Elapsed total: {:.2?}", start.elapsed());
+
+        return;
+    }
+
+    if USE_SEEK {
+        // seems like this method does not work
+        read_by_seeks();
+    } else {
+        let filename = PathBuf::from(TEST_FILE);
+        read_by_dropping("full", &filename);
     }
 }
