@@ -249,6 +249,7 @@ version = "0.1.0"
 dependencies = [
  "image",
  "ndarray",
+ "num-traits",
  "rayon",
  "tracing",
  "tracing-subscriber",
