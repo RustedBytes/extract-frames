@@ -20,3 +20,6 @@ debug = false
 [profile.release]
 debug = false
 strip = true
+
+[dev-dependencies]
+hoox = "0.3.0"

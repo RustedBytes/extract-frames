@@ -1,11 +1,11 @@
 check: fmt
-    cargo clippy -- -W clippy::pedantic
+    cargo +nightly clippy -- -W clippy::pedantic
 
 check_fmt:
-    cargo fmt -- --check
+    cargo +nightly fmt -- --check
 
 fmt:
-    cargo fmt
+    cargo +nightly fmt
 
 test:
     cargo test
