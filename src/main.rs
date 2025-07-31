@@ -156,10 +156,10 @@ fn read_by_dropping(prefix: &str, source: &Path) {
                 let frame_time = ts.as_secs_f64();
                 debug!("Frame time: {frame_time}");
 
-                let rgb = frame.to_owned().into_raw_vec_and_offset().0;
+                let rgb = frame.as_slice().unwrap();
                 let path = PathBuf::from(format!("frames/{prefix}_{n}.png"));
 
-                save_rgb_to_image(&rgb, width, height, &path);
+                save_rgb_to_image(rgb, width, height, &path);
             },
             Err(e) => {
                 if let DecodeExhausted = e {
@@ -217,9 +217,9 @@ fn read_by_seeks() {
                         let frame_time = ts.as_secs_f64();
                         debug!("Frame time: {frame_time}");
 
-                        let rgb = frame.to_owned().into_raw_vec_and_offset().0;
+                        let rgb = frame.as_slice().unwrap();
 
-                        frames_decoded.push(rgb);
+                        frames_decoded.push(rgb.to_vec());
                     },
                     Err(e) => {
                         error!("Error decoding frame: {e}");
@@ -233,7 +233,7 @@ fn read_by_seeks() {
     }
 
     info!("Elapsed: {:.2?}", start.elapsed());
-    info!("RGBs: {}", frames_decoded.len());
+    info!("Frames decoded: {}", frames_decoded.len());
 
     let start = Instant::now();
     frames_decoded.par_iter().enumerate().for_each(|(n, rgb)| {
