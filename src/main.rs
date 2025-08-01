@@ -141,6 +141,8 @@ fn split_into_segments(path: &Path) -> Vec<PathBuf> {
         SEGMENT_OUTPUT_PATTERN,
     ];
 
+    debug!("FFmpeg arguments: {args:?}");
+
     info!("Starting ffmpeg process in the background...");
 
     let result = Command::new("ffmpeg")

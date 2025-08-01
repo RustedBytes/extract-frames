@@ -1,9 +1,32 @@
 use std::fs::File;
 use std::fs::create_dir_all;
+use std::panic::catch_unwind;
 use std::path::PathBuf;
+use std::process::{Command, Stdio};
 use tempfile::tempdir;
 
-use crate::{cleanup, get_files, remove_files, remove_folder, save_rgb_to_image};
+use crate::{cleanup, get_files, remove_files, remove_folder, save_rgb_to_image, split_into_segments};
+
+/// Helper to create a small dummy MP4 for testing (requires ffmpeg).
+fn create_dummy_video(dest: &PathBuf) {
+    // Generate a 120-second black video using ffmpeg (must be installed)
+    let status = Command::new("ffmpeg")
+        .args([
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=black:s=64x64:d=120:r=30",
+            "-c:v",
+            "libx264",
+            dest.to_str().unwrap(),
+        ])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .expect("Failed to run ffmpeg to create dummy video");
+    assert!(status.success(), "ffmpeg did not produce test video");
+}
 
 #[test]
 fn test_get_files_returns_files() {
@@ -140,4 +163,38 @@ fn test_remove_folder_on_empty_dir() {
 fn test_cleanup_on_empty_dirs() {
     // Should not panic if frames/ and segments/ do not exist or are empty
     cleanup();
+}
+
+#[test]
+fn test_split_into_segments_creates_segments() {
+    let tmp_dir = tempdir().unwrap();
+    let video_path = tmp_dir.path().join("input.mp4");
+    let segments_dir = tmp_dir.path().join("segments");
+
+    create_dir_all(&segments_dir).unwrap();
+    create_dummy_video(&video_path);
+
+    // Ensure empty before run
+    let pattern = format!("{}/*.mp4", segments_dir.to_string_lossy());
+    let files = get_files(&pattern);
+    let result = remove_files(&files);
+    assert!(result.is_ok());
+
+    // Call the function
+    let segments = split_into_segments(&video_path);
+
+    // Should produce at least one segment file
+    assert!(!segments.is_empty(), "Should create at least one segment");
+    for seg in &segments {
+        assert!(seg.exists(), "Segment file should exist: {:?}", seg);
+    }
+}
+
+#[test]
+fn test_split_into_segments_handles_nonexistent_file() {
+    let nonexistent = PathBuf::from("this_file_does_not_exist.mp4");
+    let result = catch_unwind(|| {
+        split_into_segments(&nonexistent);
+    });
+    assert!(result.is_err(), "Should panic or error on nonexistent input file");
 }
