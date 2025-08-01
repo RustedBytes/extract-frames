@@ -19,5 +19,10 @@ jobs:
       - name: Install libav/libsw
         run: sudo apt install -y libavcodec-dev libavformat-dev libswscale-dev libavfilter-dev libavdevice-dev libavutil-dev
 
+      - name: Setup FFmpeg
+        uses: AnimMouse/setup-ffmpeg@v1
+        with:
+          version: master
+
       - name: Test
         run: cargo test --target x86_64-unknown-linux-gnu
