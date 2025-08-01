@@ -17,8 +17,7 @@ jobs:
         uses: dtolnay/rust-toolchain@nightly
 
       - name: Install libav/libsw
-        run:
-          | sudo apt install -y libavcodec-dev libavformat-dev libswscale-dev libavfilter-dev libavdevice-dev
+        run: sudo apt install -y libavcodec-dev libavformat-dev libswscale-dev libavfilter-dev libavdevice-dev
 
       - name: Test
         run: cargo test --target x86_64-unknown-linux-gnu

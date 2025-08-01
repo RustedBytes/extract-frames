@@ -3,7 +3,12 @@ pre-commit:
   jobs:
     - name: cargo-fmt-check
       run: cargo +nightly fmt --all -- --check
+
     - name: cargo-test
       run: cargo test --all
+
+    - name: validate-workflows
+      run: action-validator .github/workflows/*.yml
+
     # - name: cargo-doc
     #   run: cargo doc --no-deps
