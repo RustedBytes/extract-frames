@@ -9,6 +9,18 @@ use crate::{
 };
 
 /// Helper to create a small dummy MP4 for testing (requires ffmpeg).
+///
+/// Creates a 120-second black video with dimensions 64x64 at 30fps using
+/// ffmpeg. This function is used for generating test video content without
+/// requiring external video files. Expects ffmpeg to be installed and available
+/// in PATH.
+///
+/// # Arguments
+/// * `dest` - Path where the dummy video file should be created
+///
+/// # Panics
+/// * If ffmpeg command fails to execute
+/// * If ffmpeg exits with non-zero status code
 fn create_dummy_video(dest: &Path) {
     // Generate a 120-second black video using ffmpeg (must be installed)
     let output = Command::new("ffmpeg")
@@ -30,6 +42,11 @@ fn create_dummy_video(dest: &Path) {
     );
 }
 
+/// Verifies that ffmpeg is installed and accessible in the system PATH.
+///
+/// This test ensures the testing environment has ffmpeg available, which is
+/// required for creating dummy videos and running video processing tests.
+/// The test checks both command execution success and proper version output.
 #[test]
 fn test_ffmpeg_exists() {
     let output = Command::new("ffmpeg").arg("-version").output();
@@ -47,6 +64,11 @@ fn test_ffmpeg_exists() {
     );
 }
 
+/// Tests that get_files correctly returns matching files for valid patterns.
+///
+/// Creates a temporary directory with a test file and verifies that the
+/// glob pattern matching works correctly. This test ensures the file
+/// discovery functionality works as expected in normal conditions.
 #[test]
 fn test_get_files_returns_files() {
     // Setup a temporary folder and file
@@ -61,8 +83,13 @@ fn test_get_files_returns_files() {
     assert_eq!(files[0], file_path);
 }
 
+/// Tests remove_files function handles missing files gracefully.
+///
+/// Verifies that attempting to remove non-existent files returns appropriate
+/// errors rather than panicking. This ensures robust error handling in
+/// cleanup operations.
 #[test]
-fn test_remove_files_removes_existing_files() {
+fn test_remove_files_removes_existing_and_missing_files() {
     let tmp_dir = tempdir().expect("Failed to create temporary directory");
     let file_path = tmp_dir.path().join("removable.txt");
     File::create(&file_path).expect("Failed to create a file");
@@ -72,10 +99,7 @@ fn test_remove_files_removes_existing_files() {
 
     assert!(result.is_ok());
     assert!(!file_path.exists());
-}
 
-#[test]
-fn test_remove_files_handles_missing_files() {
     let file_path = PathBuf::from("nonexistentfile.txt");
     let files = vec![file_path];
     let result = remove_files(&files);
@@ -83,6 +107,11 @@ fn test_remove_files_handles_missing_files() {
     assert!(result.is_err());
 }
 
+/// Tests basic PNG image creation functionality.
+///
+/// Creates a small 2x2 red PNG image and verifies it's properly saved to disk.
+/// This test covers the core image saving functionality used throughout
+/// the application for frame extraction.
 #[test]
 fn test_save_rgb_to_image_saves_png() {
     let tmp_dir = tempdir().expect("Failed to create temporary directory");
@@ -100,6 +129,11 @@ fn test_save_rgb_to_image_saves_png() {
     assert!(img_path.exists());
 }
 
+/// Tests that get_files returns an empty vector for patterns matching no files.
+///
+/// Creates a temporary directory and uses a glob pattern that matches nothing,
+/// verifying that the function correctly returns Ok(vec![]) rather than an
+/// error. This ensures graceful handling of non-matching patterns.
 #[test]
 fn test_get_files_empty_pattern() {
     let tmp_dir = tempdir().expect("Failed to create temporary directory");
@@ -112,6 +146,11 @@ fn test_get_files_empty_pattern() {
     assert!(files.is_empty());
 }
 
+/// Tests that get_files properly handles invalid glob patterns.
+///
+/// Passes a malformed glob pattern to get_files and verifies that it returns
+/// an error rather than panicking. This ensures robust error handling for
+/// user-provided patterns.
 #[test]
 fn test_get_files_invalid_pattern_returns_err() {
     // Test that an invalid glob pattern results in an error.
@@ -119,6 +158,11 @@ fn test_get_files_invalid_pattern_returns_err() {
     assert!(result.is_err());
 }
 
+/// Tests that remove_files handles empty input gracefully.
+///
+/// Verifies that calling remove_files with an empty vector returns Ok(())
+/// without attempting any filesystem operations. This confirms the function
+/// handles edge cases properly.
 #[test]
 fn test_remove_files_with_empty_list() {
     let files: Vec<PathBuf> = vec![];
@@ -126,6 +170,12 @@ fn test_remove_files_with_empty_list() {
     assert!(result.is_ok());
 }
 
+/// Tests that remove_files returns error when some files are missing.
+///
+/// Creates a mix of existing and non-existing files and verifies that
+/// remove_files correctly removes existing files while returning an error
+/// for the missing ones. This ensures proper error reporting in mixed
+/// scenarios.
 #[test]
 fn test_remove_files_with_existing_and_missing_files() {
     let tmp_dir = tempdir().expect("Failed to create temporary directory");
@@ -142,6 +192,11 @@ fn test_remove_files_with_existing_and_missing_files() {
     assert!(!file_path.exists());
 }
 
+/// Tests error handling for invalid pixel data.
+///
+/// Provides insufficient pixel data for the specified dimensions to verify
+/// that the image creation handles malformed input gracefully without
+/// panicking or corrupting memory.
 #[test]
 fn test_save_rgb_to_image_invalid_data() {
     let tmp_dir = tempdir().expect("Failed to create temporary directory");
@@ -156,6 +211,11 @@ fn test_save_rgb_to_image_invalid_data() {
     assert!(result.is_err());
 }
 
+/// Tests that save_rgb_to_image can successfully overwrite existing files.
+///
+/// Creates a PNG image, then saves another image with the same path,
+/// verifying that the operation succeeds and the file gets updated.
+/// This confirms that file overwriting works as expected.
 #[test]
 fn test_save_rgb_to_image_overwrite() {
     let tmp_dir = tempdir().expect("Failed to create temporary directory");
@@ -179,7 +239,11 @@ fn test_save_rgb_to_image_overwrite() {
     assert!(img_path.exists());
 }
 
-// Directory utility tests (may interfere with real data if run outside tempdir)
+/// Tests that remove_folder successfully removes empty directories.
+///
+/// Creates a temporary directory and verifies that remove_folder
+/// can remove it without errors. This test ensures the directory
+/// cleanup functionality works correctly for empty folders.
 #[test]
 fn test_remove_folder_on_empty_dir() {
     let tmp_dir = tempdir().expect("Failed to create temporary directory");
@@ -191,6 +255,12 @@ fn test_remove_folder_on_empty_dir() {
     assert!(!folder.exists());
 }
 
+/// Tests that cleanup function handles empty or non-existent directories
+/// gracefully.
+///
+/// Verifies that calling cleanup() when frames/ and segments/ directories
+/// are empty or don't exist doesn't cause panics or errors. This ensures
+/// the cleanup process is robust during initial runs or after manual cleanup.
 #[test]
 fn test_cleanup_on_empty_dirs() {
     // Should not panic if frames/ and segments/ do not exist or are empty
@@ -251,6 +321,12 @@ fn test_split_into_segments_handles_nonexistent_file() {
     assert!(result.is_err(), "Should return an error on a nonexistent input file");
 }
 
+/// Tests that video segmentation creates actual segment files.
+///
+/// Uses the dummy video creation helper to generate a test video, then
+/// verifies that the segmentation process actually produces the expected
+/// MP4 segment files. This is a key integration test for the core video
+/// processing functionality.
 #[test]
 fn test_read_by_dropping_creates_expected_frames() {
     let prefix = "test";

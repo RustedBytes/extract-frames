@@ -20,6 +20,13 @@ use {
     video_rs::{decode::Decoder, error::Error::DecodeExhausted},
 };
 
+/// Command line argument parser using clap derive macro
+/// Defines the CLI interface for the frame extraction application
+///
+/// # Fields
+/// * `file` - Input video file path (default: "video.mp4")
+/// * `use_seek` - Enable seek-based frame extraction method
+/// * `multicore` - Enable parallel processing using multiple CPU cores
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Args {
@@ -36,20 +43,47 @@ struct Args {
     multicore: bool,
 }
 
+/// Number of frames to skip between extracted frames
+/// For 30fps video, skipping 30 frames extracts 1 frame per second
+/// Adjust this value to control extraction frequency and output size
 const FRAME_SKIP: usize = 30;
 
+/// Duration in seconds for each video segment when splitting videos
+/// for parallel processing. Default is 5 seconds per segment.
 const SEGMENT_TIME: &str = "5";
+
+/// File naming pattern for ffmpeg segment output files using printf-style
+/// formatting %09d creates zero-padded 9-digit numbers (e.g.,
+/// `output_000000001.mp4`)
 const SEGMENT_OUTPUT_PATTERN: &str = "segments/output_%09d.mp4";
+
+/// Glob pattern to match all PNG frame images in the frames directory
+/// Used for cleanup operations and file enumeration
 const FRAME_FILES_PATTERN: &str = "frames/*.png";
+
+/// Glob pattern to match all MP4 segment files in the segments directory
+/// Used for finding and cleaning up temporary segment files after processing
 const SEGMENTED_FILES_PATTERN: &str = "segments/*.mp4";
 
 /// Finds all files matching the given glob pattern and returns their paths.
 ///
+/// This function wraps the glob crate functionality with proper error handling
+/// and converts the results to owned `PathBuf` instances. It's used throughout
+/// the application for discovering video segments, frame images, and other
+/// generated files.
+///
 /// # Arguments
-/// * `path` - A path to look in.
+/// * `path` - A path pattern supporting glob wildcards (*, ?, \[abc\], etc.)
 ///
 /// # Returns
-/// * `Vec<PathBuf>` - A vector of found file paths.
+/// * `Ok(Vec<PathBuf>)` - Vector of matching file paths
+/// * `Err` - If the pattern is invalid UTF-8 or glob matching fails
+///
+/// # Examples
+/// ```
+/// let files = get_files("frames/*.png")?; // Find all PNG frames
+/// let segments = get_files("segments/*.mp4")?; // Find all MP4 segments
+/// ```
 fn get_files(path: impl AsRef<Path>) -> Result<Vec<PathBuf>> {
     let pattern_str = path
         .as_ref()
@@ -64,15 +98,24 @@ fn get_files(path: impl AsRef<Path>) -> Result<Vec<PathBuf>> {
     Ok(paths)
 }
 
-/// Attempts to remove all files in the specified slice.
+/// Attempts to remove all files in the specified slice with batch error
+/// handling.
 ///
-/// This function will try to remove every file path provided. If any removal
-/// operations fail, it will continue with the remaining files and then return
-/// an `Err` containing a vector of all `std::io::Error`s encountered.
+/// Unlike `std::fs::remove_file` which stops at the first error, this function
+/// attempts to remove all specified files and collects all encountered errors.
+/// This is useful for cleanup operations where partial success is acceptable.
+///
+/// # Arguments
+/// * `paths` - Slice of file paths to attempt removal on
 ///
 /// # Returns
-/// * `Ok(())` if all files were successfully removed.
-/// * `Err(Vec<Error>)` if one or more files could not be removed.
+/// * `Ok(())` if all files were successfully removed or if the input was empty
+/// * `Err(Vec<Error>)` containing all errors encountered during removal
+///   attempts
+///
+/// # Logging
+/// * Logs successful removals at debug level
+/// * Logs individual file removal errors at error level
 fn remove_files(paths: &[PathBuf]) -> Result<(), Vec<Error>> {
     let errors: Vec<_> = paths
         .iter()
@@ -109,27 +152,62 @@ fn cleanup() {
     }
 }
 
-/// Removes a directory and its contents at the given path.
+/// Removes a directory and all its contents recursively.
+///
+/// This function wraps `std::fs::remove_dir_all` with additional error context
+/// to provide meaningful error messages when directory removal fails.
 ///
 /// # Arguments
-/// * `path` - The path to the folder to remove.
+/// * `path` - Path to the directory to remove
+///
+/// # Returns
+/// * `Ok(())` if directory was successfully removed
+/// * `Err` with context if removal failed
+///
+/// # Examples
+/// ```
+/// remove_folder(Path::new("temporary_files"))?;
+/// ```
 fn remove_folder(path: &Path) -> Result<()> {
     remove_dir_all(path).with_context(|| format!("Failed to remove folder '{}'", path.display()))
 }
 
-/// Uses ffmpeg to split the source video file into several segments and saves
-/// them to disk. Waits for ffmpeg to finish, then returns the list of generated
-/// segment paths.
+/// Uses ffmpeg to split the source video file into several segments.
+///
+/// This function performs stream copying (not re-encoding) to split a large
+/// video into smaller time-based segments. It's designed for parallel
+/// processing scenarios where multiple cores can work on different segments
+/// simultaneously. The segmentation preserves video quality while enabling
+/// parallel frame extraction.
 ///
 /// # Arguments
-/// * `path` - Path to the source video file.
-/// * `segment_output_pattern` - The output pattern for ffmpeg to name segment
-///   files (e.g., "output_%09d.mp4").
-/// * `segmented_files_pattern` - A glob pattern to find the generated segment
-///   files (e.g., "output_*.mp4").
+/// * `path` - Path to the source video file to be segmented
+/// * `segment_output_pattern` - ffmpeg formatting pattern for output filenames
+///   (e.g., "output_%09d.mp4" creates `output_000000001.mp4`,
+///   `output_000000002.mp4`, etc.)
+/// * `segmented_files_pattern` - glob pattern to find the created segment files
 ///
 /// # Returns
-/// * `Result<Vec<PathBuf>>` - Paths to the generated video segments.
+/// * `Ok(Vec<PathBuf>)` - Paths to all generated segment files
+/// * `Err` - If ffmpeg fails or file discovery encounters errors
+///
+/// # Examples
+/// ```
+/// let segments = split_into_segments(
+///     Path::new("input.mp4"),
+///     "segments/output_%09d.mp4",
+///     "segments/*.mp4",
+/// )?;
+/// assert!(!segments.is_empty());
+/// ```
+///
+/// # ffmpeg Parameters Explained
+/// * `-v quiet` - Suppress most ffmpeg output
+/// * `-c copy` - Stream copy (no re-encoding, very fast)
+/// * `-map 0` - Copy all streams from input
+/// * `-segment_time` - Target duration of each segment
+/// * `-f segment` - Use segment muxer for splitting
+/// * `-reset_timestamps 1` - Reset timestamps for each segment
 fn split_into_segments(
     path: &Path,
     segment_output_pattern: &str,
@@ -167,14 +245,24 @@ fn split_into_segments(
     get_files(segmented_files_path)
 }
 
-/// Decodes video frames from the given source video by dropping frames
-/// according to `FRAME_SKIP`, and saves each decoded frame as a PNG image with
-/// the given prefix. Logs decoding progress and timing information.
+/// Decodes video frames by dropping frames according to `FRAME_SKIP` constant.
+///
+/// This function implements the basic frame extraction method that processes
+/// videos sequentially. It's memory-efficient and works well for smaller
+/// videos or single-core processing. The `FRAME_SKIP` constant determines
+/// which frames are extracted (e.g., every 30th frame for 30fps video = 1fps
+/// output).
 ///
 /// # Arguments
-/// * `prefix` - Prefix for the output PNG filenames.
-/// * `video_path` - Path to the video file to decode.
-/// * `frames_path` - Path to the frames directory.
+/// * `prefix` - String prefix for output PNG filenames (e.g., "segment-1"
+///   creates "segment-1_0.png")
+/// * `video_path` - Source video file to decode
+/// * `frames_path` - Directory where PNG frame images will be saved
+///
+/// # Performance Notes
+/// * Frames are processed in decode order without seeking (faster)
+/// * Memory usage scales with `FRAME_SKIP` value (lower = more memory)
+/// * Single-threaded operation unless called within parallel context
 fn read_by_dropping(prefix: &str, video_path: &Path, frames_path: &Path) -> Result<()> {
     if !video_path.exists() {
         anyhow::bail!("Input video path does not exist: {}", video_path.display());
@@ -221,9 +309,23 @@ fn read_by_dropping(prefix: &str, video_path: &Path, frames_path: &Path) -> Resu
     Ok(())
 }
 
-/// Decodes one frame per second by seeking to each second of the video, then
-/// saves all frames as PNG images. Uses multi-core processing to speed up
-/// saving. Logs decoding and processing times.
+/// Decodes one frame per second by seeking to specific timestamps.
+///
+/// This experimental function uses precise seeking to extract exactly one
+/// frame per second of video. It's more accurate for consistent temporal
+/// sampling but significantly slower due to seek overhead. Uses rayon for
+/// parallel PNG saving to improve performance.
+///
+/// # Approach
+/// 1. Calculate video duration and determine target timestamps (1s, 2s, 3s,
+///    ...)
+/// 2. Seek to each timestamp and decode one frame
+/// 3. Save all frames in parallel using rayon
+///
+/// # Limitations
+/// * Seek accuracy depends on video keyframe spacing
+/// * May skip frames in areas with sparse keyframes
+/// * Higher CPU usage due to seeking overhead
 fn read_by_seeks(video_path: &Path) -> Result<()> {
     let start = Instant::now();
 
@@ -300,13 +402,30 @@ fn read_by_seeks(video_path: &Path) -> Result<()> {
 }
 
 /// Saves raw RGB pixel data as a PNG image at the specified path.
-/// Logs success or error.
+///
+/// Takes a slice of raw RGB pixel data and creates a PNG image file with
+/// the specified dimensions. The function handles the conversion from raw
+/// bytes to image format and saves the result to disk.
 ///
 /// # Arguments
-/// * `raw_pixels` - A slice of raw RGB pixel data.
-/// * `width` - The width of the image.
-/// * `height` - The height of the image.
-/// * `path` - The destination file path.
+/// * `raw_pixels` - A slice of raw RGB pixel data (3 bytes per pixel)
+/// * `width` - The width of the image in pixels
+/// * `height` - The height of the image in pixels
+/// * `path` - The destination file path where the image will be saved
+///
+/// # Returns
+/// * `Ok(())` if image was successfully saved
+/// * `Err` if conversion or saving failed
+///
+/// # Panics
+/// This function does not panic but returns errors for invalid inputs.
+///
+/// # Examples
+/// ```
+/// let red_pixel = [255u8, 0, 0];
+/// let pixels = red_pixel.repeat(4); // 2x2 image
+/// save_rgb_to_image(&pixels, 2, 2, Path::new("red_square.png"))?;
+/// ```
 fn save_rgb_to_image(raw_pixels: &[u8], width: u32, height: u32, path: &Path) -> Result<()> {
     let img_buffer: RgbImage = RgbImage::from_raw(width, height, raw_pixels.to_vec())
         .context("Could not create ImageBuffer from raw data.")?;
@@ -317,6 +436,43 @@ fn save_rgb_to_image(raw_pixels: &[u8], width: u32, height: u32, path: &Path) ->
     Ok(())
 }
 
+/// Main entry point for the frame extraction application.
+///
+/// Parses command line arguments, initializes dependencies, and executes
+/// the frame extraction process based on user selections. Supports
+/// sequential processing, seek-based extraction, and parallel segment
+/// processing.
+///
+/// # Processing Modes
+/// * Standard (default) - Sequential frame dropping with `FRAME_SKIP` interval
+/// * Seek-based (--use-seek) - Extract one frame per second using seeking
+/// * Parallel (--multicore) - Process video segments in parallel
+///
+/// # Workflow
+/// 1. Initialize logging and video processing libraries
+/// 2. Create frames/ and segments/ directories
+/// 3. Clean up previous files
+/// 4. Process video based on selected mode
+/// 5. Remove temporary segment files
+///
+/// # Arguments
+/// See Args struct for detailed command line options.
+///
+/// # Returns
+/// * `Ok(())` on successful completion
+/// * `Err` with error details if processing fails
+///
+/// # Example Usage
+/// ```bash
+/// # Basic frame extraction (every 30th frame)
+/// cargo run -- --file input.mp4
+///
+/// # Extract one frame per second
+/// cargo run -- --file input.mp4 --use-seek
+///
+/// # Parallel processing for large videos
+/// cargo run -- --file input.mp4 --multicore
+/// ```
 fn main() -> Result<()> {
     let args = Args::parse();
 
