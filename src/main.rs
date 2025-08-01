@@ -53,14 +53,13 @@ fn get_files(pattern: &str) -> Vec<PathBuf> {
 /// the errors encountered.
 ///
 /// # Arguments
-/// * `files_to_remove` - A slice of `PathBufs` representing the files to
-///   remove.
+/// * `paths` - A slice of `PathBufs` representing the files to remove.
 ///
 /// # Returns
 /// * `Result<(), Vec<Error>>` - Ok if all files were removed, or Err with a
 ///   vector of encountered errors.
-fn remove_files(files_to_remove: &[PathBuf]) -> Result<(), Vec<Error>> {
-    let errors: Vec<_> = files_to_remove
+fn remove_files(paths: &[PathBuf]) -> Result<(), Vec<Error>> {
+    let errors: Vec<_> = paths
         .iter()
         .filter_map(|path| {
             if let Err(err) = fs::remove_file(path) {
@@ -114,12 +113,12 @@ fn remove_folder(path: &str) {
 /// segment paths.
 ///
 /// # Arguments
-/// * `source` - Path to the source video file.
+/// * `path` - Path to the source video file.
 ///
 /// # Returns
 /// * `Vec<PathBuf>` - Paths to the generated video segments.
-fn split_into_segments(source: &Path) -> Vec<PathBuf> {
-    let source_path = source.to_str().expect("failed to convert to &str");
+fn split_into_segments(path: &Path) -> Vec<PathBuf> {
+    let source_path = path.to_str().expect("failed to convert to &str");
 
     let args = [
         "-v",
@@ -174,11 +173,11 @@ fn split_into_segments(source: &Path) -> Vec<PathBuf> {
 ///
 /// # Arguments
 /// * `prefix` - Prefix for the output PNG filenames.
-/// * `source` - Path to the video file to decode.
-fn read_by_dropping(prefix: &str, source: &Path) {
+/// * `path` - Path to the video file to decode.
+fn read_by_dropping(prefix: &str, path: &Path) {
     let start = Instant::now();
 
-    let mut decoder = Decoder::new(source).expect("failed to create decoder");
+    let mut decoder = Decoder::new(path).expect("failed to create decoder");
 
     let (width, height) = decoder.size();
     let fps = f64::from(decoder.frame_rate());
