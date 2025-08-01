@@ -107,10 +107,11 @@ fn test_get_files_empty_pattern() {
 }
 
 #[test]
-#[should_panic]
 fn test_get_files_invalid_pattern_panics() {
     // Invalid glob pattern
-    get_files("[invalid[pattern").unwrap();
+    let result = get_files("[invalid[pattern");
+
+    assert!(result.is_err());
 }
 
 #[test]
@@ -135,7 +136,6 @@ fn test_remove_files_with_existing_and_missing_files() {
 }
 
 #[test]
-#[should_panic]
 fn test_save_rgb_to_image_invalid_data() {
     let tmp_dir = tempdir().unwrap();
     let img_path = tmp_dir.path().join("bad.png");
@@ -144,7 +144,9 @@ fn test_save_rgb_to_image_invalid_data() {
     let bad_pixels = vec![255u8; 2 * 2 * 2]; // should be 2*2*3=12
 
     // Should not panic, but image crate will likely error internally
-    save_rgb_to_image(&bad_pixels, 2, 2, &img_path).unwrap();
+    let result = save_rgb_to_image(&bad_pixels, 2, 2, &img_path);
+
+    assert!(result.is_err());
 }
 
 #[test]
