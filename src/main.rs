@@ -95,7 +95,7 @@ fn remove_files(paths: &[PathBuf]) -> Result<(), Vec<Error>> {
 fn cleanup() {
     let files: Vec<_> = [FRAME_FILES_PATTERN, SEGMENTED_FILES_PATTERN]
         .iter()
-        .flat_map(get_files)
+        .filter_map(|pattern| get_files(pattern).ok())
         .flatten()
         .collect();
 
@@ -203,10 +203,12 @@ fn read_by_dropping(prefix: &str, video_path: &Path, frames_path: &Path) -> Resu
                 let frame_time = ts.as_secs_f64();
                 debug!("Frame time: {frame_time}");
 
-                let rgb = frame.as_slice().unwrap();
-                let path = frames_path.join(format!("{prefix}_{n}.png"));
-
-                save_rgb_to_image(rgb, width, height, &path)?;
+                if let Some(rgb) = frame.as_slice() {
+                    let path = frames_path.join(format!("{prefix}_{n}.png"));
+                    save_rgb_to_image(rgb, width, height, &path)?;
+                } else {
+                    error!("Failed to get frame buffer as slice for frame {n}");
+                }
             },
             Err(e) => {
                 if let DecodeExhausted = e {
@@ -268,9 +270,11 @@ fn read_by_seeks(video_path: &Path) -> Result<()> {
                         let frame_time = ts.as_secs_f64();
                         debug!("Frame time: {frame_time}");
 
-                        let rgb = frame.as_slice().unwrap();
-
-                        frames_decoded.push(rgb.to_vec());
+                        if let Some(rgb) = frame.as_slice() {
+                            frames_decoded.push(rgb.to_vec());
+                        } else {
+                            error!("Failed to get frame buffer as slice for frame");
+                        }
                     },
                     Err(e) => {
                         error!("Error decoding frame: {e}");
