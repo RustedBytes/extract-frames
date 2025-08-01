@@ -141,32 +141,24 @@ fn split_into_segments(
     segment_output_pattern: &str,
     segmented_files_pattern: &str,
 ) -> Result<Vec<PathBuf>> {
-    let source_path = path.to_str().context("failed to convert to &str")?;
-
-    let args = [
-        "-v",
-        "quiet",
-        "-i",
-        source_path,
-        "-c",
-        "copy",
-        "-map",
-        "0",
-        "-segment_time",
-        SEGMENT_TIME,
-        "-f",
-        "segment",
-        "-reset_timestamps",
-        "1",
-        segment_output_pattern,
-    ];
-
-    debug!("FFmpeg arguments: {args:?}");
-
     info!("Starting ffmpeg process in the background...");
 
     let mut child_process = Command::new("ffmpeg")
-        .args(args)
+        .arg("-v")
+        .arg("quiet")
+        .arg("-i")
+        .arg(path)
+        .arg("-c")
+        .arg("copy")
+        .arg("-map")
+        .arg("0")
+        .arg("-segment_time")
+        .arg(SEGMENT_TIME)
+        .arg("-f")
+        .arg("segment")
+        .arg("-reset_timestamps")
+        .arg("1")
+        .arg(segment_output_pattern)
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
         .spawn()
@@ -190,9 +182,12 @@ fn split_into_segments(
 /// * `video_path` - Path to the video file to decode.
 /// * `frames_path` - Path to the frames directory.
 fn read_by_dropping(prefix: &str, video_path: &Path, frames_path: &Path) -> Result<()> {
-    // Check that `video_path` and `frames_path` exist
-    assert!(video_path.exists(), "video_path does not exist");
-    assert!(frames_path.exists(), "frames_path does not exist");
+    if !video_path.exists() {
+        anyhow::bail!("Input video path does not exist: {}", video_path.display());
+    }
+    if !frames_path.exists() {
+        anyhow::bail!("Output frames path does not exist: {}", frames_path.display());
+    }
 
     let start = Instant::now();
 
@@ -217,7 +212,7 @@ fn read_by_dropping(prefix: &str, video_path: &Path, frames_path: &Path) -> Resu
                 let rgb = frame.as_slice().unwrap();
                 let path = frames_path.join(format!("{prefix}_{n}.png"));
 
-                save_rgb_to_image(rgb, width, height, &path);
+                save_rgb_to_image(rgb, width, height, &path)?;
             },
             Err(e) => {
                 if let DecodeExhausted = e {
@@ -301,7 +296,9 @@ fn read_by_seeks(video_path: &Path) -> Result<()> {
     frames_decoded.par_iter().enumerate().for_each(|(n, rgb)| {
         let path = PathBuf::from(format!("frames/{n}.png"));
 
-        save_rgb_to_image(rgb, width, height, path.as_path());
+        if let Err(e) = save_rgb_to_image(rgb, width, height, path.as_path()) {
+            error!("Error saving image {n}: {e:?}");
+        }
     });
     info!("Elapsed saving: {:.2?}", start.elapsed());
 
@@ -316,18 +313,14 @@ fn read_by_seeks(video_path: &Path) -> Result<()> {
 /// * `width` - The width of the image.
 /// * `height` - The height of the image.
 /// * `path` - The destination file path.
-fn save_rgb_to_image(raw_pixels: &[u8], width: u32, height: u32, path: &Path) {
-    let img_buffer: RgbImage = if let Some(img) = RgbImage::from_raw(width, height, raw_pixels.to_vec()) {
-        img
-    } else {
-        error!("Error: Could not create ImageBuffer from raw data. Check dimensions and data size.");
-        return;
-    };
+fn save_rgb_to_image(raw_pixels: &[u8], width: u32, height: u32, path: &Path) -> Result<()> {
+    let img_buffer: RgbImage = RgbImage::from_raw(width, height, raw_pixels.to_vec())
+        .context("Could not create ImageBuffer from raw data.")?;
 
-    match img_buffer.save(path) {
-        Ok(()) => debug!("Image successfully saved to {}", path.display()),
-        Err(e) => error!("Error saving image: {e}"),
-    }
+    img_buffer.save(path).context("Error saving image")?;
+    debug!("Image successfully saved to {}", path.display());
+
+    Ok(())
 }
 
 fn main() -> Result<()> {

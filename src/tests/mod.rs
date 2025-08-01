@@ -1,6 +1,5 @@
 use std::fs::File;
 use std::fs::{create_dir_all, read_dir};
-use std::panic::catch_unwind;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use tempfile::tempdir;
@@ -14,16 +13,14 @@ use crate::{
 fn create_dummy_video(dest: &PathBuf) {
     // Generate a 120-second black video using ffmpeg (must be installed)
     let status = Command::new("ffmpeg")
-        .args([
-            "-y",
-            "-f",
-            "lavfi",
-            "-i",
-            "color=c=black:s=64x64:d=120:r=30",
-            "-c:v",
-            "libx264",
-            dest.to_str().unwrap(),
-        ])
+        .arg("-y")
+        .arg("-f")
+        .arg("lavfi")
+        .arg("-i")
+        .arg("color=c=black:s=64x64:d=120:r=30")
+        .arg("-c:v")
+        .arg("libx264")
+        .arg(dest)
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status()
@@ -95,7 +92,7 @@ fn test_save_rgb_to_image_saves_png() {
     let red_pixel = [255u8, 0, 0];
     let raw_pixels = red_pixel.repeat((width * height) as usize);
 
-    save_rgb_to_image(&raw_pixels, width, height, &img_path);
+    save_rgb_to_image(&raw_pixels, width, height, &img_path).unwrap();
 
     assert!(img_path.exists());
 }
@@ -137,6 +134,7 @@ fn test_remove_files_with_existing_and_missing_files() {
 }
 
 #[test]
+#[should_panic]
 fn test_save_rgb_to_image_invalid_data() {
     let tmp_dir = tempdir().unwrap();
     let img_path = tmp_dir.path().join("bad.png");
@@ -145,7 +143,7 @@ fn test_save_rgb_to_image_invalid_data() {
     let bad_pixels = vec![255u8; 2 * 2 * 2]; // should be 2*2*3=12
 
     // Should not panic, but image crate will likely error internally
-    save_rgb_to_image(&bad_pixels, 2, 2, &img_path);
+    save_rgb_to_image(&bad_pixels, 2, 2, &img_path).unwrap();
 }
 
 #[test]
@@ -158,13 +156,13 @@ fn test_save_rgb_to_image_overwrite() {
     let red_pixel = [255u8, 0, 0];
     let pixels = red_pixel.repeat((width * height) as usize);
 
-    save_rgb_to_image(&pixels, width, height, &img_path);
+    save_rgb_to_image(&pixels, width, height, &img_path).unwrap();
 
     // Overwrite with another color
     let green_pixel = [0u8, 255, 0];
     let pixels = green_pixel.repeat((width * height) as usize);
 
-    save_rgb_to_image(&pixels, width, height, &img_path);
+    save_rgb_to_image(&pixels, width, height, &img_path).unwrap();
 
     assert!(img_path.exists());
 }
@@ -220,9 +218,7 @@ fn test_split_into_segments_creates_segments() {
 #[test]
 fn test_split_into_segments_handles_nonexistent_file() {
     let nonexistent = PathBuf::from("this_file_does_not_exist.mp4");
-    let result = catch_unwind(|| {
-        split_into_segments(&nonexistent, SEGMENT_OUTPUT_PATTERN, SEGMENTED_FILES_PATTERN).unwrap();
-    });
+    let result = split_into_segments(&nonexistent, SEGMENT_OUTPUT_PATTERN, SEGMENTED_FILES_PATTERN);
     assert!(result.is_err(), "Should panic or error on nonexistent input file");
 }
 
