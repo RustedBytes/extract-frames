@@ -40,6 +40,7 @@ const FRAME_SKIP: usize = 30;
 
 const SEGMENT_TIME: &str = "5";
 const SEGMENT_OUTPUT_PATTERN: &str = "segments/output_%09d.mp4";
+const FRAME_FILES_PATTERN: &str = "frames/*.png";
 const SEGMENTED_FILES_PATTERN: &str = "segments/*.mp4";
 
 /// Finds all files matching the given glob pattern and returns their paths.
@@ -87,7 +88,7 @@ fn remove_files(paths: &[PathBuf]) -> Result<(), Vec<Error>> {
 /// Cleans up the working directories by removing all PNG images in the `frames`
 /// folder and all MP4 segments in the `segments` folder. Logs the result.
 fn cleanup() {
-    let files: Vec<_> = ["frames/*.png", SEGMENTED_FILES_PATTERN]
+    let files: Vec<_> = [FRAME_FILES_PATTERN, SEGMENTED_FILES_PATTERN]
         .iter()
         .flat_map(|pattern| get_files(pattern))
         .flatten()
