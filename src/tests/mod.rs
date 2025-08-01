@@ -6,7 +6,8 @@ use std::process::{Command, Stdio};
 use tempfile::tempdir;
 
 use crate::{
-    cleanup, get_files, read_by_dropping, remove_files, remove_folder, save_rgb_to_image, split_into_segments,
+    SEGMENT_OUTPUT_PATTERN, SEGMENTED_FILES_PATTERN, cleanup, get_files, read_by_dropping, remove_files, remove_folder,
+    save_rgb_to_image, split_into_segments,
 };
 
 /// Helper to create a small dummy MP4 for testing (requires ffmpeg).
@@ -28,6 +29,23 @@ fn create_dummy_video(dest: &PathBuf) {
         .status()
         .expect("Failed to run ffmpeg to create dummy video");
     assert!(status.success(), "ffmpeg did not produce test video");
+}
+
+#[test]
+fn test_ffmpeg_exists() {
+    let output = Command::new("ffmpeg").arg("-version").output();
+
+    assert!(
+        output.is_ok(),
+        "Failed to execute 'ffmpeg'. Is ffmpeg installed and available in PATH?"
+    );
+
+    let output = output.unwrap();
+    assert!(
+        output.status.success(),
+        "'ffmpeg' did not exit successfully. Output: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
 
 #[test]
@@ -183,7 +201,13 @@ fn test_split_into_segments_creates_segments() {
     assert!(result.is_ok());
 
     // Call the function
-    let segments = split_into_segments(&video_path);
+    let segment_output_pattern = format!("{}/output_%09d.mp4", segments_dir.to_string_lossy());
+    let segmented_files_pattern = format!("{}/*.mp4", segments_dir.to_string_lossy());
+    let segments = split_into_segments(
+        &video_path,
+        segment_output_pattern.as_str(),
+        segmented_files_pattern.as_str(),
+    );
 
     // Should produce at least one segment file
     assert!(!segments.is_empty(), "Should create at least one segment");
@@ -196,7 +220,7 @@ fn test_split_into_segments_creates_segments() {
 fn test_split_into_segments_handles_nonexistent_file() {
     let nonexistent = PathBuf::from("this_file_does_not_exist.mp4");
     let result = catch_unwind(|| {
-        split_into_segments(&nonexistent);
+        split_into_segments(&nonexistent, SEGMENT_OUTPUT_PATTERN, SEGMENTED_FILES_PATTERN);
     });
     assert!(result.is_err(), "Should panic or error on nonexistent input file");
 }

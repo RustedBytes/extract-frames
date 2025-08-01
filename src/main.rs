@@ -24,6 +24,7 @@ const FRAME_SKIP: usize = 30;
 
 const SEGMENT_TIME: &str = "5";
 const SEGMENT_OUTPUT_PATTERN: &str = "segments/output_%09d.mp4";
+const SEGMENTED_FILES_PATTERN: &str = "segments/*.mp4";
 
 const TEST_FILE: &str = "video.mp4";
 
@@ -82,7 +83,7 @@ fn remove_files(paths: &[PathBuf]) -> Result<(), Vec<Error>> {
 /// Cleans up the working directories by removing all PNG images in the `frames`
 /// folder and all MP4 segments in the `segments` folder. Logs the result.
 fn cleanup() {
-    let files: Vec<_> = ["frames/*.png", "segments/*.mp4"]
+    let files: Vec<_> = ["frames/*.png", SEGMENTED_FILES_PATTERN]
         .iter()
         .flat_map(|pattern| get_files(pattern))
         .collect();
@@ -121,7 +122,7 @@ fn remove_folder(path: &str) {
 ///
 /// # Returns
 /// * `Vec<PathBuf>` - Paths to the generated video segments.
-fn split_into_segments(path: &Path) -> Vec<PathBuf> {
+fn split_into_segments(path: &Path, segment_output_pattern: &str, segmented_files_pattern: &str) -> Vec<PathBuf> {
     let source_path = path.to_str().expect("failed to convert to &str");
 
     let args = [
@@ -139,7 +140,7 @@ fn split_into_segments(path: &Path) -> Vec<PathBuf> {
         "segment",
         "-reset_timestamps",
         "1",
-        SEGMENT_OUTPUT_PATTERN,
+        segment_output_pattern,
     ];
 
     debug!("FFmpeg arguments: {args:?}");
@@ -170,7 +171,7 @@ fn split_into_segments(path: &Path) -> Vec<PathBuf> {
         },
     }
 
-    get_files("segments/*.mp4")
+    get_files(segmented_files_pattern)
 }
 
 /// Decodes video frames from the given source video by dropping frames
@@ -333,7 +334,7 @@ fn main() {
 
     if USE_MULTICORE {
         let filename = PathBuf::from(TEST_FILE);
-        let segments = split_into_segments(&filename);
+        let segments = split_into_segments(&filename, SEGMENT_OUTPUT_PATTERN, SEGMENTED_FILES_PATTERN);
 
         info!("Segments: {}", segments.len());
 
