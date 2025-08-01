@@ -45,3 +45,6 @@ llm_qwen3_coder_non_idiomatic: repocat
 
 llm_qwen3_coder_improve_comments: repocat
     python3 .llms/inference/hf.py --model "Qwen/Qwen3-Coder-480B-A35B-Instruct:novita" --prompt=.llms/prompts/improve_comments.md --input=/tmp/code.txt --output=.llms/qwen3_improve_comments.md
+
+llm_code_review: repocat
+    python3 .llms/inference/hf.py --model "Qwen/Qwen3-Coder-480B-A35B-Instruct:novita" --prompt=.llms/prompts/code_review.md --input=/tmp/code.txt --output=.llms/code_review.md
