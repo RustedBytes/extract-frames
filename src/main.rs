@@ -153,8 +153,8 @@ fn split_into_segments(
         .arg("-reset_timestamps")
         .arg("1")
         .arg(segment_output_pattern)
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
         .spawn()
         .context("Failed to start ffmpeg process")?;
 
@@ -193,11 +193,7 @@ fn read_by_dropping(prefix: &str, video_path: &Path, frames_path: &Path) -> Resu
     debug!("Width: {width}, height: {height}");
     debug!("FPS: {fps}");
 
-    for (n, frame_result) in decoder
-        .decode_iter()
-        .enumerate()
-        .filter(|(n, _)| n.is_multiple_of(FRAME_SKIP))
-    {
+    for (n, frame_result) in decoder.decode_iter().enumerate().step_by(FRAME_SKIP) {
         match frame_result {
             Ok((ts, frame)) => {
                 let frame_time = ts.as_secs_f64();
@@ -312,7 +308,7 @@ fn read_by_seeks(video_path: &Path) -> Result<()> {
 /// * `height` - The height of the image.
 /// * `path` - The destination file path.
 fn save_rgb_to_image(raw_pixels: &[u8], width: u32, height: u32, path: &Path) -> Result<()> {
-    let img_buffer: RgbImage = RgbImage::from_raw(width, height, raw_pixels.to_owned())
+    let img_buffer: RgbImage = RgbImage::from_raw(width, height, raw_pixels.to_vec())
         .context("Could not create ImageBuffer from raw data.")?;
 
     img_buffer.save(path).context("Error saving image")?;
@@ -344,7 +340,7 @@ fn main() -> Result<()> {
         segments.par_iter().enumerate().for_each(|(n, path)| {
             let prefix = format!("segment-{n}");
 
-            if let Err(e) = read_by_dropping(prefix.as_str(), path, &frames_path) {
+            if let Err(e) = read_by_dropping(&prefix, path, &frames_path) {
                 error!("Error processing segment {n}: {e:?}");
             }
         });

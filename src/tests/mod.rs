@@ -1,7 +1,7 @@
 use std::fs::File;
 use std::fs::{create_dir_all, read_dir};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Command;
 use tempfile::tempdir;
 
 use crate::{
@@ -20,8 +20,6 @@ fn create_dummy_video(dest: &Path) {
         .arg("-c:v")
         .arg("libx264")
         .arg(dest)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
         .output()
         .expect("Failed to run ffmpeg to create dummy video");
 

@@ -26,7 +26,7 @@ download_test_video:
     wget -O "video.mp4" "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4"
 
 repocat:
-    repocat --root . --include "*.rs" --exclude "*.lock,*.bak" > /tmp/code.txt
+    repocat --root . --include "*.rs" > /tmp/code.txt
 
 llm_non_idiomatic: repocat
     gemma-cli -model=gemini-2.5-pro -prompt=.llms/prompts/non_idiomatic.md -input=/tmp/code.txt -output=.llms/non_idiomatic.md
