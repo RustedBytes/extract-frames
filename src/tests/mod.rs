@@ -5,7 +5,8 @@ use std::process::Command;
 use tempfile::tempdir;
 
 use crate::{
-    cleanup, get_files, read_by_dropping, remove_files, remove_folder, save_rgb_to_image, split_into_segments,
+    cleanup_temporary_files, decode_frames_dropping, get_files, remove_files, remove_folder, save_rgb_to_image,
+    split_into_segments,
 };
 
 /// Helper to create a small dummy MP4 for testing (requires ffmpeg).
@@ -23,7 +24,7 @@ use crate::{
 /// * If ffmpeg exits with non-zero status code
 fn create_dummy_video(dest: &Path) {
     // Generate a 120-second black video using ffmpeg (must be installed)
-    let output = Command::new("ffmpeg")
+    let ffmpeg_result = Command::new("ffmpeg")
         .arg("-y")
         .arg("-f")
         .arg("lavfi")
@@ -36,9 +37,9 @@ fn create_dummy_video(dest: &Path) {
         .expect("Failed to run ffmpeg to create dummy video");
 
     assert!(
-        output.status.success(),
+        ffmpeg_result.status.success(),
         "ffmpeg did not produce test video. stderr: {}",
-        String::from_utf8_lossy(&output.stderr)
+        String::from_utf8_lossy(&ffmpeg_result.stderr)
     );
 }
 
@@ -70,17 +71,17 @@ fn test_ffmpeg_exists() {
 /// glob pattern matching works correctly. This test ensures the file
 /// discovery functionality works as expected in normal conditions.
 #[test]
-fn test_get_files_returns_files() {
+fn test_get_files_matches() {
     // Setup a temporary folder and file
     let tmp_dir = tempdir().expect("Failed to create temporary directory");
     let file_path = tmp_dir.path().join("testfile.txt");
     File::create(&file_path).expect("Failed to create test file");
 
     let path = tmp_dir.path().join("testfile.*");
-    let files = get_files(path).unwrap_or_else(|e| panic!("Failed to get files: {e:?}"));
+    let paths = get_files(path).unwrap_or_else(|e| panic!("Failed to get files: {e:?}"));
 
-    assert_eq!(files.len(), 1);
-    assert_eq!(files[0], file_path);
+    assert_eq!(paths.len(), 1);
+    assert_eq!(paths[0], file_path);
 }
 
 /// Tests remove_files function handles missing files gracefully.
@@ -89,20 +90,20 @@ fn test_get_files_returns_files() {
 /// errors rather than panicking. This ensures robust error handling in
 /// cleanup operations.
 #[test]
-fn test_remove_files_removes_existing_and_missing_files() {
+fn test_remove_files_handles_errors() {
     let tmp_dir = tempdir().expect("Failed to create temporary directory");
     let file_path = tmp_dir.path().join("removable.txt");
     File::create(&file_path).expect("Failed to create a file");
 
-    let files = vec![file_path.clone()];
-    let result = remove_files(&files);
+    let paths = vec![file_path.clone()];
+    let result = remove_files(&paths);
 
     assert!(result.is_ok());
     assert!(!file_path.exists());
 
     let file_path = PathBuf::from("nonexistentfile.txt");
-    let files = vec![file_path];
-    let result = remove_files(&files);
+    let paths = vec![file_path];
+    let result = remove_files(&paths);
 
     assert!(result.is_err());
 }
@@ -141,9 +142,9 @@ fn test_get_files_empty_pattern() {
     let result = get_files(path);
     assert!(result.is_ok());
 
-    let files = result.unwrap();
+    let paths = result.unwrap();
 
-    assert!(files.is_empty());
+    assert!(paths.is_empty());
 }
 
 /// Tests that get_files properly handles invalid glob patterns.
@@ -165,8 +166,8 @@ fn test_get_files_invalid_pattern_returns_err() {
 /// handles edge cases properly.
 #[test]
 fn test_remove_files_with_empty_list() {
-    let files: Vec<PathBuf> = vec![];
-    let result = remove_files(&files);
+    let paths: Vec<PathBuf> = vec![];
+    let result = remove_files(&paths);
     assert!(result.is_ok());
 }
 
@@ -183,8 +184,8 @@ fn test_remove_files_with_existing_and_missing_files() {
     File::create(&file_path).expect("Failed to create a file");
 
     let missing_file = tmp_dir.path().join("missing.txt");
-    let files = vec![file_path.clone(), missing_file.clone()];
-    let result = remove_files(&files);
+    let paths = vec![file_path.clone(), missing_file.clone()];
+    let result = remove_files(&paths);
 
     // An error should be returned because one file was missing.
     assert!(result.is_err());
@@ -204,8 +205,6 @@ fn test_save_rgb_to_image_invalid_data() {
 
     // Provide fewer bytes than needed for a 2x2 image
     let bad_pixels = vec![255u8; 2 * 2 * 2]; // should be 2*2*3=12
-
-    // Should not panic, but image crate will likely error internally
     let result = save_rgb_to_image(&bad_pixels, 2, 2, &img_path);
 
     assert!(result.is_err());
@@ -258,13 +257,14 @@ fn test_remove_folder_on_empty_dir() {
 /// Tests that cleanup function handles empty or non-existent directories
 /// gracefully.
 ///
-/// Verifies that calling cleanup() when frames/ and segments/ directories
-/// are empty or don't exist doesn't cause panics or errors. This ensures
-/// the cleanup process is robust during initial runs or after manual cleanup.
+/// Verifies that calling cleanup_temporary_files() when frames/ and segments/
+/// directories are empty or don't exist doesn't cause panics or errors. This
+/// ensures the cleanup process is robust during initial runs or after manual
+/// cleanup.
 #[test]
 fn test_cleanup_on_empty_dirs() {
     // Should not panic if frames/ and segments/ do not exist or are empty
-    cleanup();
+    cleanup_temporary_files();
 }
 
 /// Tests that the segmentation process creates segment files as expected.
@@ -297,8 +297,8 @@ fn test_split_into_segments_creates_segments() {
     let segment_output_pattern = result.unwrap();
 
     // Ensure empty before run
-    let files = get_files(segmented_files_path.clone()).expect("Failed to get files");
-    let result = remove_files(&files);
+    let paths = get_files(segmented_files_path.clone()).expect("Failed to get files");
+    let result = remove_files(&paths);
     assert!(result.is_ok());
 
     // Call the function
@@ -340,7 +340,7 @@ fn test_split_into_segments_handles_nonexistent_file() {
 /// MP4 segment files. This is a key integration test for the core video
 /// processing functionality.
 #[test]
-fn test_read_by_dropping_creates_expected_frames() {
+fn test_decode_frames_dropping_creates_expected_frames() {
     let prefix = "test";
     let tmp_dir = tempdir().expect("Failed to create temporary directory");
     let video_path = tmp_dir.path().join("input.mp4");
@@ -349,7 +349,7 @@ fn test_read_by_dropping_creates_expected_frames() {
     create_dummy_video(&video_path);
     create_dir_all(&frames_dir).expect("Failed to create frames_dir");
 
-    let result = read_by_dropping(prefix, &video_path, &frames_dir);
+    let result = decode_frames_dropping(prefix, &video_path, &frames_dir);
     assert!(result.is_ok());
 
     let frames = read_dir(frames_dir).expect("Failed to read frames_dir");

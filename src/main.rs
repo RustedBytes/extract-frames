@@ -46,11 +46,11 @@ struct Args {
 /// Number of frames to skip between extracted frames
 /// For 30fps video, skipping 30 frames extracts 1 frame per second
 /// Adjust this value to control extraction frequency and output size
-const FRAME_SKIP: usize = 30;
+const FRAMES_BETWEEN_EXTRACTED: usize = 30;
 
 /// Duration in seconds for each video segment when splitting videos
 /// for parallel processing. Default is 5 seconds per segment.
-const SEGMENT_TIME: &str = "5";
+const SEGMENT_DURATION_SECONDS: f64 = 5.0;
 
 /// File naming pattern for ffmpeg segment output files using printf-style
 /// formatting %09d creates zero-padded 9-digit numbers (e.g.,
@@ -81,7 +81,7 @@ const SEGMENTED_FILES_PATTERN: &str = "segments/*.mp4";
 ///
 /// # Examples
 /// ```
-/// let files = get_files("frames/*.png")?; // Find all PNG frames
+/// let paths = get_files("frames/*.png")?; // Find all PNG frames
 /// let segments = get_files("segments/*.mp4")?; // Find all MP4 segments
 /// ```
 fn get_files(path: impl AsRef<Path>) -> Result<Vec<PathBuf>> {
@@ -135,16 +135,16 @@ fn remove_files(paths: &[PathBuf]) -> Result<(), Vec<Error>> {
 
 /// Cleans up the working directories by removing all PNG images in the `frames`
 /// folder and all MP4 segments in the `segments` folder. Logs the result.
-fn cleanup() {
-    let files: Vec<_> = [FRAME_FILES_PATTERN, SEGMENTED_FILES_PATTERN]
+fn cleanup_temporary_files() {
+    let paths: Vec<_> = [FRAME_FILES_PATTERN, SEGMENTED_FILES_PATTERN]
         .iter()
         .filter_map(|pattern| get_files(pattern).ok())
         .flatten()
         .collect();
 
-    match remove_files(&files) {
+    match remove_files(&paths) {
         Ok(()) => {
-            info!("All previous files {} items were successfully removed.", files.len());
+            info!("All previous items (n={}) were successfully removed.", paths.len());
         },
         Err(errors) => {
             error!("Encountered {} errors during file cleanup.", errors.len());
@@ -225,7 +225,7 @@ fn split_into_segments(
         .arg("-map")
         .arg("0")
         .arg("-segment_time")
-        .arg(SEGMENT_TIME)
+        .arg(SEGMENT_DURATION_SECONDS.to_string())
         .arg("-f")
         .arg("segment")
         .arg("-reset_timestamps")
@@ -245,25 +245,27 @@ fn split_into_segments(
     get_files(segmented_files_path)
 }
 
-/// Decodes video frames by dropping frames according to `FRAME_SKIP` constant.
+/// Decodes video frames by dropping frames according to
+/// `FRAMES_BETWEEN_EXTRACTED` constant.
 ///
 /// This function implements the basic frame extraction method that processes
 /// videos sequentially. It's memory-efficient and works well for smaller
-/// videos or single-core processing. The `FRAME_SKIP` constant determines
-/// which frames are extracted (e.g., every 30th frame for 30fps video = 1fps
-/// output).
+/// videos or single-core processing. The `FRAMES_BETWEEN_EXTRACTED` constant
+/// determines which frames are extracted (e.g., every 30th frame for 30fps
+/// video = 1fps output).
 ///
 /// # Arguments
-/// * `prefix` - String prefix for output PNG filenames (e.g., "segment-1"
+/// * `frame_prefix` - String prefix for output PNG filenames (e.g., "segment-1"
 ///   creates "segment-1_0.png")
 /// * `video_path` - Source video file to decode
 /// * `frames_path` - Directory where PNG frame images will be saved
 ///
 /// # Performance Notes
 /// * Frames are processed in decode order without seeking (faster)
-/// * Memory usage scales with `FRAME_SKIP` value (lower = more memory)
+/// * Memory usage scales with `FRAMES_BETWEEN_EXTRACTED` value (lower = more
+///   memory)
 /// * Single-threaded operation unless called within parallel context
-fn read_by_dropping(prefix: &str, video_path: &Path, frames_path: &Path) -> Result<()> {
+fn decode_frames_dropping(frame_prefix: &str, video_path: &Path, frames_path: &Path) -> Result<()> {
     if !video_path.exists() {
         anyhow::bail!("Input video path does not exist: {}", video_path.display());
     }
@@ -281,14 +283,14 @@ fn read_by_dropping(prefix: &str, video_path: &Path, frames_path: &Path) -> Resu
     debug!("Width: {width}, height: {height}");
     debug!("FPS: {fps}");
 
-    for (n, frame_result) in decoder.decode_iter().enumerate().step_by(FRAME_SKIP) {
+    for (n, frame_result) in decoder.decode_iter().enumerate().step_by(FRAMES_BETWEEN_EXTRACTED) {
         match frame_result {
             Ok((ts, frame)) => {
                 let frame_time = ts.as_secs_f64();
                 debug!("Frame time: {frame_time}");
 
                 if let Some(rgb) = frame.as_slice() {
-                    let path = frames_path.join(format!("{prefix}_{n}.png"));
+                    let path = frames_path.join(format!("{frame_prefix}_{n}.png"));
                     save_rgb_to_image(rgb, width, height, &path)?;
                 } else {
                     error!("Failed to get frame buffer as slice for frame {n}");
@@ -304,7 +306,7 @@ fn read_by_dropping(prefix: &str, video_path: &Path, frames_path: &Path) -> Resu
         }
     }
 
-    info!("Elapsed prefix {prefix}: {:.2?}", start.elapsed());
+    info!("Elapsed frame {frame_prefix}: {:.2?}", start.elapsed());
 
     Ok(())
 }
@@ -326,7 +328,7 @@ fn read_by_dropping(prefix: &str, video_path: &Path, frames_path: &Path) -> Resu
 /// * Seek accuracy depends on video keyframe spacing
 /// * May skip frames in areas with sparse keyframes
 /// * Higher CPU usage due to seeking overhead
-fn read_by_seeks(video_path: &Path) -> Result<()> {
+fn decode_frames_seeking(video_path: &Path) -> Result<()> {
     let start = Instant::now();
 
     let mut decoder = Decoder::new(video_path).context("failed to create decoder")?;
@@ -444,7 +446,8 @@ fn save_rgb_to_image(raw_pixels: &[u8], width: u32, height: u32, path: &Path) ->
 /// processing.
 ///
 /// # Processing Modes
-/// * Standard (default) - Sequential frame dropping with `FRAME_SKIP` interval
+/// * Standard (default) - Sequential frame dropping with
+///   `FRAMES_BETWEEN_EXTRACTED` interval
 /// * Seek-based (--use-seek) - Extract one frame per second using seeking
 /// * Parallel (--multicore) - Process video segments in parallel
 ///
@@ -482,7 +485,7 @@ fn main() -> Result<()> {
     create_dir_all("frames").context("failed to create frames directory")?;
     create_dir_all("segments").context("failed to create segments directory")?;
 
-    cleanup();
+    cleanup_temporary_files();
 
     let path = env::current_dir().context("failed to get current path")?;
     let frames_path = path.join("frames");
@@ -496,7 +499,7 @@ fn main() -> Result<()> {
         segments.par_iter().enumerate().for_each(|(n, path)| {
             let prefix = format!("segment-{n}");
 
-            if let Err(e) = read_by_dropping(&prefix, path, &frames_path) {
+            if let Err(e) = decode_frames_dropping(&prefix, path, &frames_path) {
                 error!("Error processing segment {n}: {e:?}");
             }
         });
@@ -505,9 +508,9 @@ fn main() -> Result<()> {
     } else if args.use_seek {
         // FIXME: The seek-based method is experimental and may not produce correct
         // output.
-        read_by_seeks(&args.file)?;
+        decode_frames_seeking(&args.file)?;
     } else {
-        read_by_dropping("full", &args.file, &frames_path)?;
+        decode_frames_dropping("full", &args.file, &frames_path)?;
     }
 
     let segments_dir = Path::new("segments");

@@ -28,6 +28,9 @@ download_test_video:
 repocat:
     repocat --root . --include "*.rs" > /tmp/code.txt
 
+llm_grammar_check: repocat
+    gemma-cli -model=gemma-3-12b-it -prompt=.llms/prompts/grammar_check.md -input=/tmp/code.txt -output=.llms/grammar_check.md
+
 llm_non_idiomatic: repocat
     gemma-cli -model=gemini-2.5-pro -prompt=.llms/prompts/non_idiomatic.md -input=/tmp/code.txt -output=.llms/non_idiomatic.md
 
