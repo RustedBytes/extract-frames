@@ -27,6 +27,5 @@ llm_cat:
     repocat --root . --include "*.rs" --exclude "*.lock,*.bak" > repo_content.txt
 
 llm_non_idiomatic:
-    rm -f llm_non_idiomatic.txt
-    echo "Analyze Rust code below and find non-idiomatic code:\n" >> llm_non_idiomatic.txt
+    echo "Analyze Rust code below, find non-idiomatic code and describe how it can be improved for better idiomatic style, safety, and efficiency:" > llm_non_idiomatic.txt
     repocat --root . --include "*.rs" --exclude "*.lock,*.bak" >> llm_non_idiomatic.txt

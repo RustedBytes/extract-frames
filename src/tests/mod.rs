@@ -8,9 +8,6 @@ use crate::{
     cleanup, get_files, read_by_dropping, remove_files, remove_folder, save_rgb_to_image, split_into_segments,
 };
 
-const SEGMENT_OUTPUT_PATTERN: &str = "test-segments/output_%09d.mp4";
-const SEGMENTED_FILES_PATTERN: &str = "test-segments/*.mp4";
-
 /// Helper to create a small dummy MP4 for testing (requires ffmpeg).
 fn create_dummy_video(dest: &Path) {
     // Generate a 120-second black video using ffmpeg (must be installed)
@@ -50,12 +47,12 @@ fn test_ffmpeg_exists() {
 #[test]
 fn test_get_files_returns_files() {
     // Setup a temporary folder and file
-    let tmp_dir = tempfile::tempdir().unwrap();
+    let tmp_dir = tempdir().expect("Failed to create temporary directory");
     let file_path = tmp_dir.path().join("testfile.txt");
-    File::create(&file_path).unwrap();
+    File::create(&file_path).expect("Failed to create test file");
 
     let binding = tmp_dir.path().join("testfile.*");
-    let files = get_files(&binding.to_string_lossy()).unwrap();
+    let files = get_files(&binding.to_string_lossy()).expect("Failed to get files");
 
     assert_eq!(files.len(), 1);
     assert_eq!(files[0], file_path);
@@ -63,9 +60,9 @@ fn test_get_files_returns_files() {
 
 #[test]
 fn test_remove_files_removes_existing_files() {
-    let tmp_dir = tempfile::tempdir().unwrap();
+    let tmp_dir = tempdir().expect("Failed to create temporary directory");
     let file_path = tmp_dir.path().join("removable.txt");
-    File::create(&file_path).unwrap();
+    File::create(&file_path).expect("Failed to create a file");
 
     let files = vec![file_path.clone()];
     let result = remove_files(&files);
@@ -85,7 +82,7 @@ fn test_remove_files_handles_missing_files() {
 
 #[test]
 fn test_save_rgb_to_image_saves_png() {
-    let tmp_dir = tempfile::tempdir().unwrap();
+    let tmp_dir = tempdir().expect("Failed to create temporary directory");
     let img_path = tmp_dir.path().join("output.png");
 
     // Create a small 2x2 red image
@@ -102,7 +99,7 @@ fn test_save_rgb_to_image_saves_png() {
 
 #[test]
 fn test_get_files_empty_pattern() {
-    let tmp_dir = tempdir().unwrap();
+    let tmp_dir = tempdir().expect("Failed to create temporary directory");
     let binding = tmp_dir.path().join("doesnotexist.*");
     let result = get_files(&binding.to_string_lossy());
     assert!(result.is_ok());
@@ -128,9 +125,9 @@ fn test_remove_files_with_empty_list() {
 
 #[test]
 fn test_remove_files_with_existing_and_missing_files() {
-    let tmp_dir = tempdir().unwrap();
+    let tmp_dir = tempdir().expect("Failed to create temporary directory");
     let file_path = tmp_dir.path().join("file.txt");
-    File::create(&file_path).unwrap();
+    File::create(&file_path).expect("Failed to create a file");
 
     let missing_file = tmp_dir.path().join("missing.txt");
     let files = vec![file_path.clone(), missing_file.clone()];
@@ -144,7 +141,7 @@ fn test_remove_files_with_existing_and_missing_files() {
 
 #[test]
 fn test_save_rgb_to_image_invalid_data() {
-    let tmp_dir = tempdir().unwrap();
+    let tmp_dir = tempdir().expect("Failed to create temporary directory");
     let img_path = tmp_dir.path().join("bad.png");
 
     // Provide fewer bytes than needed for a 2x2 image
@@ -158,7 +155,7 @@ fn test_save_rgb_to_image_invalid_data() {
 
 #[test]
 fn test_save_rgb_to_image_overwrite() {
-    let tmp_dir = tempdir().unwrap();
+    let tmp_dir = tempdir().expect("Failed to create temporary directory");
     let img_path = tmp_dir.path().join("overwrite.png");
 
     let width = 1;
@@ -182,11 +179,11 @@ fn test_save_rgb_to_image_overwrite() {
 // Directory utility tests (may interfere with real data if run outside tempdir)
 #[test]
 fn test_remove_folder_on_empty_dir() {
-    let tmp_dir = tempdir().unwrap();
+    let tmp_dir = tempdir().expect("Failed to create temporary directory");
     let folder = tmp_dir.path().join("toremove");
-    create_dir_all(&folder).unwrap();
+    create_dir_all(&folder).expect("Failed to read folder");
 
-    remove_folder(folder.as_path()).unwrap();
+    remove_folder(folder.as_path()).expect("Failed to remove folder");
 
     assert!(!folder.exists());
 }
@@ -199,18 +196,18 @@ fn test_cleanup_on_empty_dirs() {
 
 #[test]
 fn test_split_into_segments_creates_segments() {
-    let tmp_dir = tempdir().unwrap();
+    let tmp_dir = tempdir().expect("Failed to create temporary directory");
     let video_path = tmp_dir.path().join("input.mp4");
     let segments_dir = tmp_dir.path().join("segments");
 
-    create_dir_all(&segments_dir).unwrap();
+    create_dir_all(&segments_dir).expect("Failed to read segments_dir");
     create_dummy_video(&video_path);
 
     let segment_output_pattern = segments_dir.join("output_%09d.mp4");
     let segmented_files_pattern = segments_dir.join("*.mp4");
 
     // Ensure empty before run
-    let files = get_files(&segmented_files_pattern.to_string_lossy()).unwrap();
+    let files = get_files(&segmented_files_pattern.to_string_lossy()).expect("Failed to get files");
     let result = remove_files(&files);
     assert!(result.is_ok());
 
@@ -234,24 +231,31 @@ fn test_split_into_segments_creates_segments() {
 #[test]
 fn test_split_into_segments_handles_nonexistent_file() {
     let nonexistent = PathBuf::from("this_file_does_not_exist.mp4");
-    let result = split_into_segments(&nonexistent, SEGMENT_OUTPUT_PATTERN, SEGMENTED_FILES_PATTERN);
+    let dummy_segment_output_pattern = "test-segments/output_%09d.mp4";
+    let dummy_segmented_files_pattern = "test-segments/*.mp4";
+
+    let result = split_into_segments(
+        &nonexistent,
+        dummy_segment_output_pattern,
+        dummy_segmented_files_pattern,
+    );
     assert!(result.is_err(), "Should return an error on a nonexistent input file");
 }
 
 #[test]
 fn test_read_by_dropping_creates_expected_frames() {
     let prefix = "test";
-    let tmp_dir = tempdir().unwrap();
+    let tmp_dir = tempdir().expect("Failed to create temporary directory");
     let video_path = tmp_dir.path().join("input.mp4");
     let frames_dir = tmp_dir.path().join("frames");
 
     create_dummy_video(&video_path);
-    create_dir_all(&frames_dir).unwrap();
+    create_dir_all(&frames_dir).expect("Failed to create frames_dir");
 
     let result = read_by_dropping(prefix, &video_path, &frames_dir);
     assert!(result.is_ok());
 
-    let frames = read_dir(frames_dir).unwrap();
+    let frames = read_dir(frames_dir).expect("Failed to read frames_dir");
     let png_files: Vec<_> = frames
         .filter_map(|e| e.ok())
         .filter(|e| e.path().extension().map_or(false, |ext| ext == "png"))
