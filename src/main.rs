@@ -8,6 +8,7 @@ use {
     num_traits::cast,
     rayon::prelude::*,
     std::{
+        env,
         fs::{create_dir_all, remove_dir_all, remove_file},
         io::Error,
         path::{Path, PathBuf},
@@ -178,11 +179,16 @@ fn split_into_segments(path: &Path) -> Vec<PathBuf> {
 ///
 /// # Arguments
 /// * `prefix` - Prefix for the output PNG filenames.
-/// * `path` - Path to the video file to decode.
-fn read_by_dropping(prefix: &str, path: &Path) {
+/// * `video_path` - Path to the video file to decode.
+/// * `frames_path` - Path to the frames directory.
+fn read_by_dropping(prefix: &str, video_path: &Path, frames_path: &Path) {
+    // Check that `video_path` and `frames_path` exist
+    assert!(video_path.exists(), "video_path does not exist");
+    assert!(frames_path.exists(), "frames_path does not exist");
+
     let start = Instant::now();
 
-    let mut decoder = Decoder::new(path).expect("failed to create decoder");
+    let mut decoder = Decoder::new(video_path).expect("failed to create decoder");
 
     let (width, height) = decoder.size();
     let fps = f64::from(decoder.frame_rate());
@@ -201,7 +207,7 @@ fn read_by_dropping(prefix: &str, path: &Path) {
                 debug!("Frame time: {frame_time}");
 
                 let rgb = frame.as_slice().unwrap();
-                let path = PathBuf::from(format!("frames/{prefix}_{n}.png"));
+                let path = frames_path.join(format!("{prefix}_{n}.png"));
 
                 save_rgb_to_image(rgb, width, height, &path);
             },
@@ -322,6 +328,9 @@ fn main() {
 
     cleanup();
 
+    let path = env::current_dir().expect("failed to get current path");
+    let frames_path = path.join("frames");
+
     if USE_MULTICORE {
         let filename = PathBuf::from(TEST_FILE);
         let segments = split_into_segments(&filename);
@@ -332,7 +341,7 @@ fn main() {
         segments.par_iter().enumerate().for_each(|(n, path)| {
             let prefix = format!("segment-{n}");
 
-            read_by_dropping(prefix.as_str(), path);
+            read_by_dropping(prefix.as_str(), path, &frames_path);
         });
 
         info!("Elapsed total: {:.2?}", start.elapsed());
@@ -347,6 +356,6 @@ fn main() {
         read_by_seeks();
     } else {
         let filename = PathBuf::from(TEST_FILE);
-        read_by_dropping("full", &filename);
+        read_by_dropping("full", &filename, &frames_path);
     }
 }

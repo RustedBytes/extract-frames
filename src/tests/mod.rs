@@ -1,11 +1,13 @@
 use std::fs::File;
-use std::fs::create_dir_all;
+use std::fs::{create_dir_all, read_dir};
 use std::panic::catch_unwind;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use tempfile::tempdir;
 
-use crate::{cleanup, get_files, remove_files, remove_folder, save_rgb_to_image, split_into_segments};
+use crate::{
+    cleanup, get_files, read_by_dropping, remove_files, remove_folder, save_rgb_to_image, split_into_segments,
+};
 
 /// Helper to create a small dummy MP4 for testing (requires ffmpeg).
 fn create_dummy_video(dest: &PathBuf) {
@@ -197,4 +199,25 @@ fn test_split_into_segments_handles_nonexistent_file() {
         split_into_segments(&nonexistent);
     });
     assert!(result.is_err(), "Should panic or error on nonexistent input file");
+}
+
+#[test]
+fn test_read_by_dropping_creates_expected_frames() {
+    let prefix = "test";
+    let tmp_dir = tempdir().unwrap();
+    let video_path = tmp_dir.path().join("input.mp4");
+    let frames_dir = tmp_dir.path().join("frames");
+
+    create_dummy_video(&video_path);
+    create_dir_all(&frames_dir).unwrap();
+
+    read_by_dropping(prefix, &video_path, &frames_dir);
+
+    let frames = read_dir(frames_dir).unwrap();
+    let png_files: Vec<_> = frames
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().extension().map_or(false, |ext| ext == "png"))
+        .collect();
+
+    assert!(!png_files.is_empty(), "No PNG frames were created");
 }
