@@ -1,13 +1,12 @@
-.gemini/
-
 /target
 /frames
 /segments
+/.llms/*.md
+
+.env
 
 video.mp4
 video.webm
 
 testlog
 tarpaulin-report.html
-repo_content.txt
-llm_non_idiomatic.txt

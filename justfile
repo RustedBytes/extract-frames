@@ -1,3 +1,5 @@
+set dotenv-load := true
+
 init:
     cargo install action-validator repocat just
     brew install lefthook
@@ -23,9 +25,14 @@ release: check
 download_test_video:
     wget -O "video.mp4" "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4"
 
-llm_cat:
-    repocat --root . --include "*.rs" --exclude "*.lock,*.bak" > repo_content.txt
+repocat:
+    repocat --root . --include "*.rs" --exclude "*.lock,*.bak" > /tmp/code.txt
 
-llm_non_idiomatic:
-    echo "Analyze Rust code below, find non-idiomatic code and describe how it can be improved for better idiomatic style, safety, and efficiency:" > llm_non_idiomatic.txt
-    repocat --root . --include "*.rs" --exclude "*.lock,*.bak" >> llm_non_idiomatic.txt
+llm_non_idiomatic: repocat
+    gemma-cli -model=gemini-2.5-pro -prompt=.llms/prompts/non_idiomatic.md -input=/tmp/code.txt -output=.llms/non_idiomatic.md
+
+llm_improve_comments: repocat
+    gemma-cli -model=gemma-3-12b-it -prompt=.llms/prompts/improve_comments.md -input=/tmp/code.txt -output=.llms/improve_comments.md
+
+llm_not_tested: repocat
+    gemma-cli -model=gemma-3-12b-it -prompt=.llms/prompts/not_tested.md -input=/tmp/code.txt -output=.llms/not_tested.md

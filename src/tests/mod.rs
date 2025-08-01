@@ -211,17 +211,23 @@ fn test_split_into_segments_creates_segments() {
     let segment_output_pattern = segments_dir.join("output_%09d.mp4");
     let segmented_files_path = segments_dir.join("*.mp4");
 
+    let result = segment_output_pattern.to_str().ok_or_else(|| {
+        anyhow::anyhow!(
+            "Invalid UTF-8 path for glob pattern: {}",
+            segment_output_pattern.display()
+        )
+    });
+    assert!(result.is_ok());
+
+    let segment_output_pattern = result.unwrap();
+
     // Ensure empty before run
     let files = get_files(segmented_files_path.clone()).expect("Failed to get files");
     let result = remove_files(&files);
     assert!(result.is_ok());
 
     // Call the function
-    let result = split_into_segments(
-        &video_path,
-        &segment_output_pattern.to_string_lossy(),
-        segmented_files_path,
-    );
+    let result = split_into_segments(&video_path, segment_output_pattern, segmented_files_path);
     assert!(result.is_ok());
 
     let segments = result.unwrap();
