@@ -46,13 +46,18 @@ const SEGMENTED_FILES_PATTERN: &str = "segments/*.mp4";
 /// Finds all files matching the given glob pattern and returns their paths.
 ///
 /// # Arguments
-/// * `pattern` - A glob pattern as a string slice.
+/// * `path` - A path to look in.
 ///
 /// # Returns
 /// * `Vec<PathBuf>` - A vector of found file paths.
-fn get_files(pattern: &str) -> Result<Vec<PathBuf>> {
-    let paths = glob(pattern)
-        .with_context(|| format!("Failed to read glob pattern '{pattern}'"))?
+fn get_files(path: impl AsRef<Path>) -> Result<Vec<PathBuf>> {
+    let pattern_str = path
+        .as_ref()
+        .to_str()
+        .ok_or_else(|| anyhow::anyhow!("Invalid UTF-8 path for glob pattern: {}", path.as_ref().display()))?;
+
+    let paths = glob(pattern_str)
+        .with_context(|| format!("Failed to read glob pattern '{pattern_str}'"))?
         .filter_map(Result::ok)
         .collect();
 
@@ -90,7 +95,7 @@ fn remove_files(paths: &[PathBuf]) -> Result<(), Vec<Error>> {
 fn cleanup() {
     let files: Vec<_> = [FRAME_FILES_PATTERN, SEGMENTED_FILES_PATTERN]
         .iter()
-        .flat_map(|pattern| get_files(pattern))
+        .flat_map(get_files)
         .flatten()
         .collect();
 
@@ -128,7 +133,7 @@ fn remove_folder(path: &Path) -> Result<()> {
 fn split_into_segments(
     path: &Path,
     segment_output_pattern: &str,
-    segmented_files_pattern: &str,
+    segmented_files_path: impl AsRef<Path>,
 ) -> Result<Vec<PathBuf>> {
     info!("Starting ffmpeg process in the background...");
 
@@ -159,7 +164,7 @@ fn split_into_segments(
         anyhow::bail!("ffmpeg failed with exit code: {}", status.code().unwrap_or(-1));
     }
 
-    get_files(segmented_files_pattern)
+    get_files(segmented_files_path)
 }
 
 /// Decodes video frames from the given source video by dropping frames

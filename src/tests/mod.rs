@@ -11,7 +11,7 @@ use crate::{
 /// Helper to create a small dummy MP4 for testing (requires ffmpeg).
 fn create_dummy_video(dest: &Path) {
     // Generate a 120-second black video using ffmpeg (must be installed)
-    let status = Command::new("ffmpeg")
+    let output = Command::new("ffmpeg")
         .arg("-y")
         .arg("-f")
         .arg("lavfi")
@@ -22,9 +22,14 @@ fn create_dummy_video(dest: &Path) {
         .arg(dest)
         .stdout(Stdio::null())
         .stderr(Stdio::null())
-        .status()
+        .output()
         .expect("Failed to run ffmpeg to create dummy video");
-    assert!(status.success(), "ffmpeg did not produce test video");
+
+    assert!(
+        output.status.success(),
+        "ffmpeg did not produce test video. stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
 
 #[test]
@@ -51,8 +56,8 @@ fn test_get_files_returns_files() {
     let file_path = tmp_dir.path().join("testfile.txt");
     File::create(&file_path).expect("Failed to create test file");
 
-    let binding = tmp_dir.path().join("testfile.*");
-    let files = get_files(&binding.to_string_lossy()).expect("Failed to get files");
+    let path = tmp_dir.path().join("testfile.*");
+    let files = get_files(path).unwrap_or_else(|e| panic!("Failed to get files: {e:?}"));
 
     assert_eq!(files.len(), 1);
     assert_eq!(files[0], file_path);
@@ -100,8 +105,8 @@ fn test_save_rgb_to_image_saves_png() {
 #[test]
 fn test_get_files_empty_pattern() {
     let tmp_dir = tempdir().expect("Failed to create temporary directory");
-    let binding = tmp_dir.path().join("doesnotexist.*");
-    let result = get_files(&binding.to_string_lossy());
+    let path = tmp_dir.path().join("doesnotexist.*");
+    let result = get_files(path);
     assert!(result.is_ok());
 
     let files = result.unwrap();
@@ -204,10 +209,10 @@ fn test_split_into_segments_creates_segments() {
     create_dummy_video(&video_path);
 
     let segment_output_pattern = segments_dir.join("output_%09d.mp4");
-    let segmented_files_pattern = segments_dir.join("*.mp4");
+    let segmented_files_path = segments_dir.join("*.mp4");
 
     // Ensure empty before run
-    let files = get_files(&segmented_files_pattern.to_string_lossy()).expect("Failed to get files");
+    let files = get_files(segmented_files_path.clone()).expect("Failed to get files");
     let result = remove_files(&files);
     assert!(result.is_ok());
 
@@ -215,7 +220,7 @@ fn test_split_into_segments_creates_segments() {
     let result = split_into_segments(
         &video_path,
         &segment_output_pattern.to_string_lossy(),
-        &segmented_files_pattern.to_string_lossy(),
+        segmented_files_path,
     );
     assert!(result.is_ok());
 
