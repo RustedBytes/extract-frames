@@ -7,7 +7,7 @@ This program uses FFmpeg to extract frames from a video file with FPS=1 in paral
 ## Usage
 
 ```
-./target/release/extract-frames --file video.mp4 --multicore
+extract-frames --file video.mp4 --multicore
 ```
 
 ## Development

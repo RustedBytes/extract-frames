@@ -303,7 +303,7 @@ fn read_by_seeks(video_path: &Path) -> Result<()> {
 /// * `height` - The height of the image.
 /// * `path` - The destination file path.
 fn save_rgb_to_image(raw_pixels: &[u8], width: u32, height: u32, path: &Path) -> Result<()> {
-    let img_buffer: RgbImage = RgbImage::from_raw(width, height, raw_pixels.to_vec())
+    let img_buffer: RgbImage = RgbImage::from_raw(width, height, raw_pixels.to_owned())
         .context("Could not create ImageBuffer from raw data.")?;
 
     img_buffer.save(path).context("Error saving image")?;
@@ -318,12 +318,12 @@ fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
     video_rs::init().expect("video-rs failed to initialize");
 
-    create_dir_all("frames").expect("failed to create frames directory");
-    create_dir_all("segments").expect("failed to create segments directory");
+    create_dir_all("frames").context("failed to create frames directory")?;
+    create_dir_all("segments").context("failed to create segments directory")?;
 
     cleanup();
 
-    let path = env::current_dir().expect("failed to get current path");
+    let path = env::current_dir().context("failed to get current path")?;
     let frames_path = path.join("frames");
 
     if args.multicore {

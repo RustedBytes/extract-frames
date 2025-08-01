@@ -1,3 +1,7 @@
+init:
+    cargo install action-validator repocat just
+    brew install lefthook
+
 check: fmt
     cargo +nightly clippy -- -W clippy::pedantic
 
@@ -21,3 +25,8 @@ download_test_video:
 
 llm_cat:
     repocat --root . --include "*.rs" --exclude "*.lock,*.bak" > repo_content.txt
+
+llm_non_idiomatic:
+    rm -f llm_non_idiomatic.txt
+    echo "Analyze Rust code below and find non-idiomatic code:\n" >> llm_non_idiomatic.txt
+    repocat --root . --include "*.rs" --exclude "*.lock,*.bak" >> llm_non_idiomatic.txt

@@ -1,16 +1,18 @@
 use std::fs::File;
 use std::fs::{create_dir_all, read_dir};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use tempfile::tempdir;
 
 use crate::{
-    SEGMENT_OUTPUT_PATTERN, SEGMENTED_FILES_PATTERN, cleanup, get_files, read_by_dropping, remove_files, remove_folder,
-    save_rgb_to_image, split_into_segments,
+    cleanup, get_files, read_by_dropping, remove_files, remove_folder, save_rgb_to_image, split_into_segments,
 };
 
+const SEGMENT_OUTPUT_PATTERN: &str = "test-segments/output_%09d.mp4";
+const SEGMENTED_FILES_PATTERN: &str = "test-segments/*.mp4";
+
 /// Helper to create a small dummy MP4 for testing (requires ffmpeg).
-fn create_dummy_video(dest: &PathBuf) {
+fn create_dummy_video(dest: &Path) {
     // Generate a 120-second black video using ffmpeg (must be installed)
     let status = Command::new("ffmpeg")
         .arg("-y")
@@ -52,8 +54,8 @@ fn test_get_files_returns_files() {
     let file_path = tmp_dir.path().join("testfile.txt");
     File::create(&file_path).unwrap();
 
-    let pattern = format!("{}/testfile.*", tmp_dir.path().display());
-    let files = get_files(&pattern).unwrap();
+    let binding = tmp_dir.path().join("testfile.*");
+    let files = get_files(&binding.to_string_lossy()).unwrap();
 
     assert_eq!(files.len(), 1);
     assert_eq!(files[0], file_path);
@@ -92,7 +94,8 @@ fn test_save_rgb_to_image_saves_png() {
     let red_pixel = [255u8, 0, 0];
     let raw_pixels = red_pixel.repeat((width * height) as usize);
 
-    save_rgb_to_image(&raw_pixels, width, height, &img_path).unwrap();
+    let result = save_rgb_to_image(&raw_pixels, width, height, &img_path);
+    assert!(result.is_ok());
 
     assert!(img_path.exists());
 }
@@ -100,8 +103,11 @@ fn test_save_rgb_to_image_saves_png() {
 #[test]
 fn test_get_files_empty_pattern() {
     let tmp_dir = tempdir().unwrap();
-    let pattern = format!("{}/doesnotexist.*", tmp_dir.path().display());
-    let files = get_files(&pattern).unwrap();
+    let binding = tmp_dir.path().join("doesnotexist.*");
+    let result = get_files(&binding.to_string_lossy());
+    assert!(result.is_ok());
+
+    let files = result.unwrap();
 
     assert!(files.is_empty());
 }
@@ -160,13 +166,15 @@ fn test_save_rgb_to_image_overwrite() {
     let red_pixel = [255u8, 0, 0];
     let pixels = red_pixel.repeat((width * height) as usize);
 
-    save_rgb_to_image(&pixels, width, height, &img_path).unwrap();
+    let result = save_rgb_to_image(&pixels, width, height, &img_path);
+    assert!(result.is_ok());
 
     // Overwrite with another color
     let green_pixel = [0u8, 255, 0];
     let pixels = green_pixel.repeat((width * height) as usize);
 
-    save_rgb_to_image(&pixels, width, height, &img_path).unwrap();
+    let result = save_rgb_to_image(&pixels, width, height, &img_path);
+    assert!(result.is_ok());
 
     assert!(img_path.exists());
 }
@@ -198,21 +206,23 @@ fn test_split_into_segments_creates_segments() {
     create_dir_all(&segments_dir).unwrap();
     create_dummy_video(&video_path);
 
+    let segment_output_pattern = segments_dir.join("output_%09d.mp4");
+    let segmented_files_pattern = segments_dir.join("*.mp4");
+
     // Ensure empty before run
-    let pattern = format!("{}/*.mp4", segments_dir.to_string_lossy());
-    let files = get_files(&pattern).unwrap();
+    let files = get_files(&segmented_files_pattern.to_string_lossy()).unwrap();
     let result = remove_files(&files);
     assert!(result.is_ok());
 
     // Call the function
-    let segment_output_pattern = format!("{}/output_%09d.mp4", segments_dir.to_string_lossy());
-    let segmented_files_pattern = format!("{}/*.mp4", segments_dir.to_string_lossy());
-    let segments = split_into_segments(
+    let result = split_into_segments(
         &video_path,
-        segment_output_pattern.as_str(),
-        segmented_files_pattern.as_str(),
-    )
-    .unwrap();
+        &segment_output_pattern.to_string_lossy(),
+        &segmented_files_pattern.to_string_lossy(),
+    );
+    assert!(result.is_ok());
+
+    let segments = result.unwrap();
 
     // Should produce at least one segment file
     assert!(!segments.is_empty(), "Should create at least one segment");
@@ -238,7 +248,8 @@ fn test_read_by_dropping_creates_expected_frames() {
     create_dummy_video(&video_path);
     create_dir_all(&frames_dir).unwrap();
 
-    read_by_dropping(prefix, &video_path, &frames_dir).unwrap();
+    let result = read_by_dropping(prefix, &video_path, &frames_dir);
+    assert!(result.is_ok());
 
     let frames = read_dir(frames_dir).unwrap();
     let png_files: Vec<_> = frames
