@@ -53,7 +53,7 @@ fn test_get_files_returns_files() {
     File::create(&file_path).unwrap();
 
     let pattern = format!("{}/testfile.*", tmp_dir.path().display());
-    let files = get_files(&pattern);
+    let files = get_files(&pattern).unwrap();
 
     assert_eq!(files.len(), 1);
     assert_eq!(files[0], file_path);
@@ -101,7 +101,8 @@ fn test_save_rgb_to_image_saves_png() {
 fn test_get_files_empty_pattern() {
     let tmp_dir = tempdir().unwrap();
     let pattern = format!("{}/doesnotexist.*", tmp_dir.path().display());
-    let files = get_files(&pattern);
+    let files = get_files(&pattern).unwrap();
+
     assert!(files.is_empty());
 }
 
@@ -109,7 +110,7 @@ fn test_get_files_empty_pattern() {
 #[should_panic]
 fn test_get_files_invalid_pattern_panics() {
     // Invalid glob pattern
-    let _ = get_files("[invalid[pattern");
+    get_files("[invalid[pattern").unwrap();
 }
 
 #[test]
@@ -173,7 +174,9 @@ fn test_remove_folder_on_empty_dir() {
     let tmp_dir = tempdir().unwrap();
     let folder = tmp_dir.path().join("toremove");
     create_dir_all(&folder).unwrap();
-    remove_folder(folder.to_str().unwrap());
+
+    remove_folder(folder.as_path()).unwrap();
+
     assert!(!folder.exists());
 }
 
@@ -194,7 +197,7 @@ fn test_split_into_segments_creates_segments() {
 
     // Ensure empty before run
     let pattern = format!("{}/*.mp4", segments_dir.to_string_lossy());
-    let files = get_files(&pattern);
+    let files = get_files(&pattern).unwrap();
     let result = remove_files(&files);
     assert!(result.is_ok());
 

@@ -50,22 +50,13 @@ const SEGMENTED_FILES_PATTERN: &str = "segments/*.mp4";
 ///
 /// # Returns
 /// * `Vec<PathBuf>` - A vector of found file paths.
-fn get_files(pattern: &str) -> Vec<PathBuf> {
-    glob(pattern)
-        .expect("Failed to read glob pattern")
-        .filter_map(|entry| {
-            match entry {
-                Ok(path) => {
-                    debug!("Found segment: {}", path.display());
-                    Some(path)
-                },
-                Err(e) => {
-                    error!("Error processing path: {e:?}");
-                    None
-                },
-            }
-        })
-        .collect()
+fn get_files(pattern: &str) -> Result<Vec<PathBuf>> {
+    let paths = glob(pattern)
+        .with_context(|| format!("Failed to read glob pattern '{pattern}'"))?
+        .filter_map(Result::ok)
+        .collect();
+
+    Ok(paths)
 }
 
 /// Removes the specified files, returning Ok if all were removed or Err with
@@ -100,6 +91,7 @@ fn cleanup() {
     let files: Vec<_> = ["frames/*.png", SEGMENTED_FILES_PATTERN]
         .iter()
         .flat_map(|pattern| get_files(pattern))
+        .flatten()
         .collect();
 
     match remove_files(&files) {
@@ -116,15 +108,8 @@ fn cleanup() {
 ///
 /// # Arguments
 /// * `path` - The path to the folder to remove.
-fn remove_folder(path: &str) {
-    match remove_dir_all(path) {
-        Ok(()) => {
-            debug!("Successfully removed folder: {path}");
-        },
-        Err(e) => {
-            error!("Error removing folder: {e}");
-        },
-    }
+fn remove_folder(path: &Path) -> Result<()> {
+    remove_dir_all(path).with_context(|| format!("Failed to remove folder '{}'", path.display()))
 }
 
 /// Uses ffmpeg to split the source video file into several segments and saves
@@ -170,7 +155,7 @@ fn split_into_segments(
         anyhow::bail!("ffmpeg failed with exit code: {}", status.code().unwrap_or(-1));
     }
 
-    Ok(get_files(segmented_files_pattern))
+    get_files(segmented_files_pattern)
 }
 
 /// Decodes video frames from the given source video by dropping frames
@@ -359,7 +344,8 @@ fn main() -> Result<()> {
         read_by_dropping("full", &args.file, &frames_path)?;
     }
 
-    remove_folder("segments");
+    let segments_dir = Path::new("segments");
+    remove_folder(segments_dir)?;
 
     Ok(())
 }
