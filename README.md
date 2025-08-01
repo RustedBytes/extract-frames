@@ -4,6 +4,12 @@
 
 This program uses FFmpeg to extract frames from a video file with FPS=1 in parallel.
 
+## Usage
+
+```
+./target/release/extract-frames --file video.mp4 --multicore
+```
+
 ## Development
 
 You need to use these tools to make changes in this project:
