@@ -18,3 +18,6 @@ release: check
 
 download_test_video:
     wget -O "video.mp4" "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4"
+
+llm_cat:
+    repocat --root . --include "*.rs,*.toml,*.yml,*.md" --exclude "*.lock,*.bak" > repo_content.txt

@@ -207,7 +207,8 @@ fn test_split_into_segments_creates_segments() {
         &video_path,
         segment_output_pattern.as_str(),
         segmented_files_pattern.as_str(),
-    );
+    )
+    .unwrap();
 
     // Should produce at least one segment file
     assert!(!segments.is_empty(), "Should create at least one segment");
@@ -220,7 +221,7 @@ fn test_split_into_segments_creates_segments() {
 fn test_split_into_segments_handles_nonexistent_file() {
     let nonexistent = PathBuf::from("this_file_does_not_exist.mp4");
     let result = catch_unwind(|| {
-        split_into_segments(&nonexistent, SEGMENT_OUTPUT_PATTERN, SEGMENTED_FILES_PATTERN);
+        split_into_segments(&nonexistent, SEGMENT_OUTPUT_PATTERN, SEGMENTED_FILES_PATTERN).unwrap();
     });
     assert!(result.is_err(), "Should panic or error on nonexistent input file");
 }
@@ -235,7 +236,7 @@ fn test_read_by_dropping_creates_expected_frames() {
     create_dummy_video(&video_path);
     create_dir_all(&frames_dir).unwrap();
 
-    read_by_dropping(prefix, &video_path, &frames_dir);
+    read_by_dropping(prefix, &video_path, &frames_dir).unwrap();
 
     let frames = read_dir(frames_dir).unwrap();
     let png_files: Vec<_> = frames

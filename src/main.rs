@@ -2,6 +2,8 @@
 mod tests;
 
 use {
+    anyhow::{Context, Result},
+    clap::Parser,
     glob::glob,
     image::RgbImage,
     log::{debug, error, info},
@@ -18,15 +20,27 @@ use {
     video_rs::{decode::Decoder, error::Error::DecodeExhausted},
 };
 
-const USE_SEEK: bool = false;
-const USE_MULTICORE: bool = true;
+#[derive(Parser, Debug)]
+#[command(version, about, long_about = None)]
+struct Args {
+    /// Path to the video file
+    #[arg(short, long, default_value = "video.mp4")]
+    file: PathBuf,
+
+    /// Use the seek method for frame extraction
+    #[arg(long)]
+    use_seek: bool,
+
+    /// Use parallel processing
+    #[arg(long, action = clap::ArgAction::SetTrue)]
+    multicore: bool,
+}
+
 const FRAME_SKIP: usize = 30;
 
 const SEGMENT_TIME: &str = "5";
 const SEGMENT_OUTPUT_PATTERN: &str = "segments/output_%09d.mp4";
 const SEGMENTED_FILES_PATTERN: &str = "segments/*.mp4";
-
-const TEST_FILE: &str = "video.mp4";
 
 /// Finds all files matching the given glob pattern and returns their paths.
 /// Logs each found file.
@@ -121,9 +135,13 @@ fn remove_folder(path: &str) {
 /// * `path` - Path to the source video file.
 ///
 /// # Returns
-/// * `Vec<PathBuf>` - Paths to the generated video segments.
-fn split_into_segments(path: &Path, segment_output_pattern: &str, segmented_files_pattern: &str) -> Vec<PathBuf> {
-    let source_path = path.to_str().expect("failed to convert to &str");
+/// * `Result<Vec<PathBuf>>` - Paths to the generated video segments.
+fn split_into_segments(
+    path: &Path,
+    segment_output_pattern: &str,
+    segmented_files_pattern: &str,
+) -> Result<Vec<PathBuf>> {
+    let source_path = path.to_str().context("failed to convert to &str")?;
 
     let args = [
         "-v",
@@ -147,31 +165,20 @@ fn split_into_segments(path: &Path, segment_output_pattern: &str, segmented_file
 
     info!("Starting ffmpeg process in the background...");
 
-    let result = Command::new("ffmpeg")
+    let mut child_process = Command::new("ffmpeg")
         .args(args)
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
-        .spawn();
+        .spawn()
+        .context("Failed to start ffmpeg process")?;
 
-    match result {
-        Ok(mut child_process) => {
-            info!("Waiting for ffmpeg (PID: {}) to finish...", child_process.id());
+    let status = child_process.wait().context("Failed to wait for ffmpeg process")?;
 
-            let status = child_process.wait().expect("Failed to wait for process");
-
-            info!("Process finished with status: {status}");
-            if status.success() {
-                info!("ffmpeg completed successfully!");
-            } else {
-                panic!("ffmpeg failed with exit code: {}", status.code().unwrap_or(-1));
-            }
-        },
-        Err(e) => {
-            error!("Failed to start ffmpeg process: {e}");
-        },
+    if !status.success() {
+        anyhow::bail!("ffmpeg failed with exit code: {}", status.code().unwrap_or(-1));
     }
 
-    get_files(segmented_files_pattern)
+    Ok(get_files(segmented_files_pattern))
 }
 
 /// Decodes video frames from the given source video by dropping frames
@@ -182,14 +189,14 @@ fn split_into_segments(path: &Path, segment_output_pattern: &str, segmented_file
 /// * `prefix` - Prefix for the output PNG filenames.
 /// * `video_path` - Path to the video file to decode.
 /// * `frames_path` - Path to the frames directory.
-fn read_by_dropping(prefix: &str, video_path: &Path, frames_path: &Path) {
+fn read_by_dropping(prefix: &str, video_path: &Path, frames_path: &Path) -> Result<()> {
     // Check that `video_path` and `frames_path` exist
     assert!(video_path.exists(), "video_path does not exist");
     assert!(frames_path.exists(), "frames_path does not exist");
 
     let start = Instant::now();
 
-    let mut decoder = Decoder::new(video_path).expect("failed to create decoder");
+    let mut decoder = Decoder::new(video_path).context("failed to create decoder")?;
 
     let (width, height) = decoder.size();
     let fps = f64::from(decoder.frame_rate());
@@ -223,16 +230,17 @@ fn read_by_dropping(prefix: &str, video_path: &Path, frames_path: &Path) {
     }
 
     info!("Elapsed prefix {prefix}: {:.2?}", start.elapsed());
+
+    Ok(())
 }
 
 /// Decodes one frame per second by seeking to each second of the video, then
 /// saves all frames as PNG images. Uses parallel processing to speed up saving.
 /// Logs decoding and processing times.
-fn read_by_seeks() {
+fn read_by_seeks(video_path: &Path) -> Result<()> {
     let start = Instant::now();
 
-    let source = PathBuf::from(TEST_FILE);
-    let mut decoder = Decoder::new(source).expect("failed to create decoder");
+    let mut decoder = Decoder::new(video_path).context("failed to create decoder")?;
 
     let fps = f64::from(decoder.frame_rate());
     let duration_time = decoder.duration().expect("failed to get duration");
@@ -296,6 +304,8 @@ fn read_by_seeks() {
         save_rgb_to_image(rgb, width, height, path.as_path());
     });
     info!("Elapsed saving: {:.2?}", start.elapsed());
+
+    Ok(())
 }
 
 /// Saves raw RGB pixel data as a PNG image at the specified path.
@@ -320,7 +330,9 @@ fn save_rgb_to_image(raw_pixels: &[u8], width: u32, height: u32, path: &Path) {
     }
 }
 
-fn main() {
+fn main() -> Result<()> {
+    let args = Args::parse();
+
     tracing_subscriber::fmt::init();
     video_rs::init().expect("video-rs failed to initialize");
 
@@ -332,9 +344,8 @@ fn main() {
     let path = env::current_dir().expect("failed to get current path");
     let frames_path = path.join("frames");
 
-    if USE_MULTICORE {
-        let filename = PathBuf::from(TEST_FILE);
-        let segments = split_into_segments(&filename, SEGMENT_OUTPUT_PATTERN, SEGMENTED_FILES_PATTERN);
+    if args.multicore {
+        let segments = split_into_segments(&args.file, SEGMENT_OUTPUT_PATTERN, SEGMENTED_FILES_PATTERN)?;
 
         info!("Segments: {}", segments.len());
 
@@ -342,21 +353,20 @@ fn main() {
         segments.par_iter().enumerate().for_each(|(n, path)| {
             let prefix = format!("segment-{n}");
 
-            read_by_dropping(prefix.as_str(), path, &frames_path);
+            if let Err(e) = read_by_dropping(prefix.as_str(), path, &frames_path) {
+                error!("Error processing segment {n}: {e:?}");
+            }
         });
 
         info!("Elapsed total: {:.2?}", start.elapsed());
-
-        remove_folder("segments");
-
-        return;
-    }
-
-    if USE_SEEK {
+    } else if args.use_seek {
         // seems like this method does not work
-        read_by_seeks();
+        read_by_seeks(&args.file)?;
     } else {
-        let filename = PathBuf::from(TEST_FILE);
-        read_by_dropping("full", &filename, &frames_path);
+        read_by_dropping("full", &args.file, &frames_path)?;
     }
+
+    remove_folder("segments");
+
+    Ok(())
 }
