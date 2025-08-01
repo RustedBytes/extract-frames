@@ -23,6 +23,14 @@ const SEGMENT_OUTPUT_PATTERN: &str = "segments/output_%09d.mp4";
 
 const TEST_FILE: &str = "video.mp4";
 
+/// Finds all files matching the given glob pattern and returns their paths.
+/// Logs each found file.
+///
+/// # Arguments
+/// * `pattern` - A glob pattern as a string slice.
+///
+/// # Returns
+/// * `Vec<PathBuf>` - A vector of found file paths.
 fn get_files(pattern: &str) -> Vec<PathBuf> {
     glob(pattern)
         .expect("Failed to read glob pattern")
@@ -41,6 +49,16 @@ fn get_files(pattern: &str) -> Vec<PathBuf> {
         .collect()
 }
 
+/// Removes the specified files, returning Ok if all were removed or Err with
+/// the errors encountered.
+///
+/// # Arguments
+/// * `files_to_remove` - A slice of `PathBufs` representing the files to
+///   remove.
+///
+/// # Returns
+/// * `Result<(), Vec<Error>>` - Ok if all files were removed, or Err with a
+///   vector of encountered errors.
 fn remove_files(files_to_remove: &[PathBuf]) -> Result<(), Vec<Error>> {
     let errors: Vec<_> = files_to_remove
         .iter()
@@ -58,6 +76,8 @@ fn remove_files(files_to_remove: &[PathBuf]) -> Result<(), Vec<Error>> {
     if errors.is_empty() { Ok(()) } else { Err(errors) }
 }
 
+/// Cleans up the working directories by removing all PNG images in the `frames`
+/// folder and all MP4 segments in the `segments` folder. Logs the result.
 fn cleanup() {
     let files: Vec<_> = ["frames/*.png", "segments/*.mp4"]
         .iter()
@@ -74,6 +94,10 @@ fn cleanup() {
     }
 }
 
+/// Removes a directory and its contents at the given path.
+///
+/// # Arguments
+/// * `path` - The path to the folder to remove.
 fn remove_folder(path: &str) {
     match fs::remove_dir_all(path) {
         Ok(()) => {
@@ -85,6 +109,15 @@ fn remove_folder(path: &str) {
     }
 }
 
+/// Uses ffmpeg to split the source video file into several segments and saves
+/// them to disk. Waits for ffmpeg to finish, then returns the list of generated
+/// segment paths.
+///
+/// # Arguments
+/// * `source` - Path to the source video file.
+///
+/// # Returns
+/// * `Vec<PathBuf>` - Paths to the generated video segments.
 fn split_into_segments(source: &Path) -> Vec<PathBuf> {
     let source_path = source.to_str().expect("failed to convert to &str");
 
@@ -135,6 +168,13 @@ fn split_into_segments(source: &Path) -> Vec<PathBuf> {
     get_files("segments/*.mp4")
 }
 
+/// Decodes video frames from the given source video by dropping frames
+/// according to `FRAME_SKIP`, and saves each decoded frame as a PNG image with
+/// the given prefix. Logs decoding progress and timing information.
+///
+/// # Arguments
+/// * `prefix` - Prefix for the output PNG filenames.
+/// * `source` - Path to the video file to decode.
 fn read_by_dropping(prefix: &str, source: &Path) {
     let start = Instant::now();
 
@@ -174,6 +214,9 @@ fn read_by_dropping(prefix: &str, source: &Path) {
     info!("Elapsed prefix {prefix}: {:.2?}", start.elapsed());
 }
 
+/// Decodes one frame per second by seeking to each second of the video, then
+/// saves all frames as PNG images. Uses parallel processing to speed up saving.
+/// Logs decoding and processing times.
 fn read_by_seeks() {
     let start = Instant::now();
 
@@ -244,6 +287,14 @@ fn read_by_seeks() {
     info!("Elapsed saving: {:.2?}", start.elapsed());
 }
 
+/// Saves raw RGB pixel data as a PNG image at the specified path.
+/// Logs success or error.
+///
+/// # Arguments
+/// * `raw_pixels` - A slice of raw RGB pixel data.
+/// * `width` - The width of the image.
+/// * `height` - The height of the image.
+/// * `path` - The destination file path.
 fn save_rgb_to_image(raw_pixels: &[u8], width: u32, height: u32, path: &Path) {
     let img_buffer: RgbImage = if let Some(img) = RgbImage::from_raw(width, height, raw_pixels.to_vec()) {
         img
