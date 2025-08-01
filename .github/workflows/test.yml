@@ -1,12 +1,10 @@
-name: Run tests
+name: unit tests
 
 on:
   push:
 
 jobs:
-  build:
-    name: run-tests
-
+  test:
     runs-on: ubuntu-latest
 
     steps:
