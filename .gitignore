@@ -4,6 +4,7 @@
 /.llms/*.md
 
 .env
+.DS_Store
 
 video.mp4
 video.webm

@@ -36,3 +36,9 @@ llm_improve_comments: repocat
 
 llm_not_tested: repocat
     gemma-cli -model=gemma-3-12b-it -prompt=.llms/prompts/not_tested.md -input=/tmp/code.txt -output=.llms/not_tested.md
+
+llm_qwen3_coder_non_idiomatic: repocat
+    python3 .llms/inference/hf.py --model "Qwen/Qwen3-Coder-480B-A35B-Instruct:novita" --prompt=.llms/prompts/non_idiomatic.md --input=/tmp/code.txt --output=.llms/qwen3_non_idiomatic.md
+
+llm_qwen3_coder_improve_comments: repocat
+    python3 .llms/inference/hf.py --model "Qwen/Qwen3-Coder-480B-A35B-Instruct:novita" --prompt=.llms/prompts/improve_comments.md --input=/tmp/code.txt --output=.llms/qwen3_improve_comments.md
