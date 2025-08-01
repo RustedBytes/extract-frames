@@ -31,7 +31,7 @@ struct Args {
     #[arg(long)]
     use_seek: bool,
 
-    /// Use parallel processing
+    /// Use multi-core processing
     #[arg(long, action = clap::ArgAction::SetTrue)]
     multicore: bool,
 }
@@ -219,8 +219,8 @@ fn read_by_dropping(prefix: &str, video_path: &Path, frames_path: &Path) -> Resu
 }
 
 /// Decodes one frame per second by seeking to each second of the video, then
-/// saves all frames as PNG images. Uses parallel processing to speed up saving.
-/// Logs decoding and processing times.
+/// saves all frames as PNG images. Uses multi-core processing to speed up
+/// saving. Logs decoding and processing times.
 fn read_by_seeks(video_path: &Path) -> Result<()> {
     let start = Instant::now();
 
