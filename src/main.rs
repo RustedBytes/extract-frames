@@ -8,7 +8,7 @@ use {
     num_traits::cast,
     rayon::prelude::*,
     std::{
-        fs,
+        fs::{create_dir_all, remove_dir_all, remove_file},
         io::Error,
         path::{Path, PathBuf},
         process::{Command, Stdio},
@@ -65,7 +65,7 @@ fn remove_files(paths: &[PathBuf]) -> Result<(), Vec<Error>> {
     let errors: Vec<_> = paths
         .iter()
         .filter_map(|path| {
-            if let Err(err) = fs::remove_file(path) {
+            if let Err(err) = remove_file(path) {
                 error!("Failed to remove file {}: {}", path.display(), err);
                 Some(err)
             } else {
@@ -101,7 +101,7 @@ fn cleanup() {
 /// # Arguments
 /// * `path` - The path to the folder to remove.
 fn remove_folder(path: &str) {
-    match fs::remove_dir_all(path) {
+    match remove_dir_all(path) {
         Ok(()) => {
             debug!("Successfully removed folder: {path}");
         },
@@ -317,8 +317,8 @@ fn main() {
     tracing_subscriber::fmt::init();
     video_rs::init().expect("video-rs failed to initialize");
 
-    fs::create_dir_all("frames").expect("failed to create frames directory");
-    fs::create_dir_all("segments").expect("failed to create segments directory");
+    create_dir_all("frames").expect("failed to create frames directory");
+    create_dir_all("segments").expect("failed to create segments directory");
 
     cleanup();
 
