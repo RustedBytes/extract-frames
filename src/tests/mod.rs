@@ -107,10 +107,9 @@ fn test_get_files_empty_pattern() {
 }
 
 #[test]
-fn test_get_files_invalid_pattern_panics() {
-    // Invalid glob pattern
+fn test_get_files_invalid_pattern_returns_err() {
+    // Test that an invalid glob pattern results in an error.
     let result = get_files("[invalid[pattern");
-
     assert!(result.is_err());
 }
 
@@ -131,7 +130,9 @@ fn test_remove_files_with_existing_and_missing_files() {
     let files = vec![file_path.clone(), missing_file.clone()];
     let result = remove_files(&files);
 
+    // An error should be returned because one file was missing.
     assert!(result.is_err());
+    // The file that did exist should still have been removed.
     assert!(!file_path.exists());
 }
 
@@ -224,7 +225,7 @@ fn test_split_into_segments_creates_segments() {
 fn test_split_into_segments_handles_nonexistent_file() {
     let nonexistent = PathBuf::from("this_file_does_not_exist.mp4");
     let result = split_into_segments(&nonexistent, SEGMENT_OUTPUT_PATTERN, SEGMENTED_FILES_PATTERN);
-    assert!(result.is_err(), "Should panic or error on nonexistent input file");
+    assert!(result.is_err(), "Should return an error on a nonexistent input file");
 }
 
 #[test]

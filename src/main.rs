@@ -43,7 +43,6 @@ const SEGMENT_OUTPUT_PATTERN: &str = "segments/output_%09d.mp4";
 const SEGMENTED_FILES_PATTERN: &str = "segments/*.mp4";
 
 /// Finds all files matching the given glob pattern and returns their paths.
-/// Logs each found file.
 ///
 /// # Arguments
 /// * `pattern` - A glob pattern as a string slice.
@@ -59,15 +58,15 @@ fn get_files(pattern: &str) -> Result<Vec<PathBuf>> {
     Ok(paths)
 }
 
-/// Removes the specified files, returning Ok if all were removed or Err with
-/// the errors encountered.
+/// Attempts to remove all files in the specified slice.
 ///
-/// # Arguments
-/// * `paths` - A slice of `PathBufs` representing the files to remove.
+/// This function will try to remove every file path provided. If any removal
+/// operations fail, it will continue with the remaining files and then return
+/// an `Err` containing a vector of all `std::io::Error`s encountered.
 ///
 /// # Returns
-/// * `Result<(), Vec<Error>>` - Ok if all files were removed, or Err with a
-///   vector of encountered errors.
+/// * `Ok(())` if all files were successfully removed.
+/// * `Err(Vec<Error>)` if one or more files could not be removed.
 fn remove_files(paths: &[PathBuf]) -> Result<(), Vec<Error>> {
     let errors: Vec<_> = paths
         .iter()
@@ -118,6 +117,10 @@ fn remove_folder(path: &Path) -> Result<()> {
 ///
 /// # Arguments
 /// * `path` - Path to the source video file.
+/// * `segment_output_pattern` - The output pattern for ffmpeg to name segment
+///   files (e.g., "output_%09d.mp4").
+/// * `segmented_files_pattern` - A glob pattern to find the generated segment
+///   files (e.g., "output_*.mp4").
 ///
 /// # Returns
 /// * `Result<Vec<PathBuf>>` - Paths to the generated video segments.
@@ -338,7 +341,8 @@ fn main() -> Result<()> {
 
         info!("Elapsed total: {:.2?}", start.elapsed());
     } else if args.use_seek {
-        // seems like this method does not work
+        // FIXME: The seek-based method is experimental and may not produce correct
+        // output.
         read_by_seeks(&args.file)?;
     } else {
         read_by_dropping("full", &args.file, &frames_path)?;
