@@ -267,6 +267,13 @@ fn test_cleanup_on_empty_dirs() {
     cleanup();
 }
 
+/// Tests that the segmentation process creates segment files as expected.
+///
+/// This test generates a dummy input video in a temporary directory, invokes
+/// the split_into_segments function, and asserts that at least one output
+/// segment file is created in the segments directory. It verifies that the
+/// segmentation logic works end-to-end and that output files are actually
+/// produced on disk.
 #[test]
 fn test_split_into_segments_creates_segments() {
     let tmp_dir = tempdir().expect("Failed to create temporary directory");
@@ -307,6 +314,11 @@ fn test_split_into_segments_creates_segments() {
     }
 }
 
+/// Tests that split_into_segments gracefully handles a nonexistent input file.
+///
+/// Attempts to segment a video file that does not exist and asserts that the
+/// function returns an error. This ensures proper error handling for missing
+/// or invalid input paths.
 #[test]
 fn test_split_into_segments_handles_nonexistent_file() {
     let nonexistent = PathBuf::from("this_file_does_not_exist.mp4");
