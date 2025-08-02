@@ -41,9 +41,6 @@ llm_non_idiomatic: repocat
 llm_improve_comments: repocat
     gemma-cli -model=gemma-3-12b-it -prompt=.llms/prompts/improve_comments.md -input=/tmp/code.txt -output=.llms/improve_comments.md
 
-llm_not_tested: repocat
-    gemma-cli -model=gemma-3-12b-it -prompt=.llms/prompts/not_tested.md -input=/tmp/code.txt -output=.llms/not_tested.md
-
 llm_llama_grammar_check: repocat
     python3 .llms/inference/hf.py --model "meta-llama/Llama-4-Scout-17B-16E-Instruct:cerebras" --prompt=.llms/prompts/grammar_check.md --input=/tmp/code.txt --output=.llms/llama_grammar_check.md
 
