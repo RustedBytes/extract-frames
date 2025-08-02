@@ -2,6 +2,15 @@
 name = "extract-frames"
 version = "0.2.1"
 edition = "2024"
+description = "CLI tool for extracting frames from videos"
+authors = [
+  "Yehor Smoliakov <egorsmkv@gmail.com>",
+]
+keywords = ["ffmpeg", "video"]
+categories = ["command-line-utilities"]
+repository = "https://github.com/egorsmkv/extract-frames-rs"
+license = "MIT"
+readme = "README.md"
 
 [dependencies]
 anyhow = "1.0.98"
