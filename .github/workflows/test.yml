@@ -1,26 +1,19 @@
 name: unit tests
-
 on:
   push:
-
 jobs:
   test:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
       - name: Install Rust
         uses: dtolnay/rust-toolchain@nightly
-
       - name: Install libav/libsw
         run: sudo apt install -y libavcodec-dev libavformat-dev libswscale-dev libavfilter-dev libavdevice-dev libavutil-dev
-
       - name: Setup FFmpeg
         uses: AnimMouse/setup-ffmpeg@v1
         with:
           version: master
-
       - name: Test
         run: cargo test --target x86_64-unknown-linux-gnu

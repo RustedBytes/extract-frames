@@ -10,7 +10,11 @@ check: fmt
 check_fmt:
     cargo +nightly fmt -- --check
 
-fmt:
+fmt_yaml:
+    yamlfmt lefthook.yml
+    yamlfmt -dstar .github/**/*.{yaml,yml}
+
+fmt: fmt_yaml
     cargo +nightly fmt
 
 test:

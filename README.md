@@ -19,4 +19,5 @@ You need to use these tools to make changes in this project:
 - `cargo install just`
 - `brew install lefthook`
 - downloaded nightly version of rustc, clippy
-- https://github.com/egorsmkv/gemma-cli
+- [gemma-cli](https://github.com/egorsmkv/gemma-cli)
+- [yamlfmt](https://github.com/google/yamlfmt)
