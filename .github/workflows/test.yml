@@ -17,3 +17,7 @@ jobs:
           version: master
       - name: Test
         run: cargo test --target x86_64-unknown-linux-gnu
+      - name: Install cargo-careful
+        run: cargo install cargo-careful
+      - name: Run cargo-careful
+        run: cargo +nightly careful test --target x86_64-unknown-linux-gnu
