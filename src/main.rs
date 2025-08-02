@@ -30,15 +30,47 @@ use {
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Args {
-    /// Path to the video file
+    /// Path to the input video file to process
+    ///
+    /// Specifies the video file from which frames will be extracted. The file
+    /// must be in a format supported by the underlying video processing
+    /// library.
+    ///
+    /// # Default
+    /// If not specified, defaults to "video.mp4" in the current directory.
+    ///
+    /// # Supported Formats
+    /// Common formats like MP4, AVI, MOV, MKV are typically supported, though
+    /// actual support depends on the system's codec installation.
     #[arg(short, long, default_value = "video.mp4")]
     file: PathBuf,
 
-    /// Use the seek method for frame extraction
+    /// Enable seek-based frame extraction method
+    ///
+    /// When enabled, extracts exactly one frame per second by seeking to
+    /// specific timestamps rather than processing sequentially. This method
+    /// is more accurate for temporal sampling but significantly slower due
+    /// to seek overhead.
+    ///
+    /// # Performance Impact
+    /// * Much slower than sequential processing due to seek operations
+    /// * More CPU intensive due to decoding from keyframes
+    /// * May skip frames in areas with sparse keyframes
+    /// * Incompatible with --multicore flag
     #[arg(long)]
     use_seek: bool,
 
-    /// Use multi-core processing
+    /// Enable multi-core parallel processing
+    ///
+    /// When enabled, splits the input video into time-based segments and
+    /// processes them in parallel using all available CPU cores. This can
+    /// significantly reduce processing time for large videos on multi-core
+    /// systems.
+    ///
+    /// # Requirements
+    /// * ffmpeg must be installed and available in system PATH
+    /// * Sufficient disk space for temporary segment files
+    /// * Incompatible with --use-seek flag
     #[arg(long, action = clap::ArgAction::SetTrue)]
     multicore: bool,
 }

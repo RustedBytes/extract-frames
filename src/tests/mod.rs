@@ -5,8 +5,8 @@ use std::process::Command;
 use tempfile::tempdir;
 
 use crate::{
-    cleanup_temporary_files, decode_frames_dropping, get_files, remove_files, remove_folder, save_rgb_to_image,
-    split_into_segments,
+    cleanup_temporary_files, decode_frames_dropping, decode_frames_seeking, get_files, remove_files, remove_folder,
+    save_rgb_to_image, split_into_segments,
 };
 
 /// Helper to create a small dummy MP4 for testing (requires ffmpeg).
@@ -359,4 +359,82 @@ fn test_decode_frames_dropping_creates_expected_frames() {
         .collect();
 
     assert!(!png_files.is_empty(), "No PNG frames were created");
+}
+
+/// Tests error handling for mismatched dimensions.
+///
+/// Verifies that `save_rgb_to_image` returns an error when the provided
+/// dimensions (width * height) do not match the length of the pixel buffer.
+/// This ensures the function validates input dimensions against buffer size.
+#[test]
+fn test_save_rgb_to_image_invalid_dimensions() {
+    let tmp_dir = tempdir().expect("Failed to create temporary directory");
+    let img_path = tmp_dir.path().join("invalid.png");
+    let raw_pixels = vec![255u8; 12]; // valid for 2x2 image
+    let result = save_rgb_to_image(&raw_pixels, 3, 2, &img_path); // invalid dimensions
+    assert!(result.is_err());
+}
+
+/// Tests that `split_into_segments` returns an error for invalid ffmpeg output
+/// patterns.
+///
+/// This test provides an output pattern that is invalid for ffmpeg's segment
+/// muxer (e.g., missing a number formatter like `%09d`). It verifies that the
+/// function correctly captures the ffmpeg error and returns a `Result::Err`,
+/// ensuring robust error handling for invalid ffmpeg arguments.
+#[test]
+fn test_split_into_segments_invalid_output_pattern() {
+    let tmp_dir = tempdir().expect("Failed to create temporary directory");
+    let video_path = tmp_dir.path().join("input.mp4");
+    create_dummy_video(&video_path);
+    let segments_dir = tmp_dir.path().join("segments");
+    create_dir_all(&segments_dir).expect("Failed to create segments directory");
+    let invalid_pattern = "invalid_pattern"; // not a valid ffmpeg output pattern
+    let result = split_into_segments(&video_path, invalid_pattern, "segments/*.mp4");
+    assert!(result.is_err());
+}
+
+/// Tests error handling for `decode_frames_seeking` with a nonexistent video
+/// file.
+///
+/// Verifies that `decode_frames_seeking` returns an error when the input video
+/// path does not exist. This ensures the function gracefully handles invalid
+/// file paths instead of panicking.
+#[test]
+fn test_decode_frames_seeking_invalid_video_path() {
+    let nonexistent = PathBuf::from("nonexistent.mp4");
+    let result = decode_frames_seeking(&nonexistent);
+    assert!(result.is_err());
+}
+
+/// Tests error handling for `decode_frames_dropping` with a nonexistent output
+/// path.
+///
+/// Verifies that `decode_frames_dropping` returns an error when the specified
+/// output directory for frames does not exist. This ensures the function
+/// performs necessary pre-checks on output paths.
+#[test]
+fn test_decode_frames_dropping_invalid_frames_path() {
+    let tmp_dir = tempdir().expect("Failed to create temporary directory");
+    let video_path = tmp_dir.path().join("input.mp4");
+    create_dummy_video(&video_path);
+    let frames_path = tmp_dir.path().join("nonexistent");
+    let result = decode_frames_dropping("test", &video_path, &frames_path);
+    assert!(result.is_err());
+}
+
+/// Tests error handling for `decode_frames_dropping` with a nonexistent video
+/// file.
+///
+/// Verifies that `decode_frames_dropping` returns an error when the input video
+/// path does not exist. This ensures the function gracefully handles invalid
+/// file paths instead of panicking.
+#[test]
+fn test_decode_frames_dropping_invalid_video_path() {
+    let tmp_dir = tempdir().expect("Failed to create temporary directory");
+    let video_path = tmp_dir.path().join("nonexistent.mp4");
+    let frames_path = tmp_dir.path().join("frames");
+    create_dir_all(&frames_path).expect("Failed to create frames directory");
+    let result = decode_frames_dropping("test", &video_path, &frames_path);
+    assert!(result.is_err());
 }

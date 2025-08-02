@@ -40,11 +40,24 @@ llm_improve_comments: repocat
 llm_not_tested: repocat
     gemma-cli -model=gemma-3-12b-it -prompt=.llms/prompts/not_tested.md -input=/tmp/code.txt -output=.llms/not_tested.md
 
+llm_llama_grammar_check: repocat
+    python3 .llms/inference/hf.py --model "meta-llama/Llama-4-Scout-17B-16E-Instruct:cerebras" --prompt=.llms/prompts/grammar_check.md --input=/tmp/code.txt --output=.llms/llama_grammar_check.md
+
+llm_maverick_tests_enhancement: repocat
+    python3 .llms/inference/hf.py --model "meta-llama/Llama-4-Maverick-17B-128E-Instruct:cerebras" --max_tokens 65000 --prompt=.llms/prompts/enhance_tests.md --input=/tmp/code.txt --output=.llms/maverick_tests_enhancement.md
+
+llm_maverick_enhance_readme:
+    repocat --root . --include "*.rs,*.md" > /tmp/code-and-readme.txt
+    python3 .llms/inference/hf.py --model "meta-llama/Llama-4-Maverick-17B-128E-Instruct:cerebras" --max_tokens 8000 --prompt=.llms/prompts/enhance_readme.md --input=/tmp/code-and-readme.txt --output=.llms/maverick_readme.md
+
 llm_qwen3_coder_non_idiomatic: repocat
     python3 .llms/inference/hf.py --model "Qwen/Qwen3-Coder-480B-A35B-Instruct:novita" --prompt=.llms/prompts/non_idiomatic.md --input=/tmp/code.txt --output=.llms/qwen3_non_idiomatic.md
 
 llm_qwen3_coder_improve_comments: repocat
     python3 .llms/inference/hf.py --model "Qwen/Qwen3-Coder-480B-A35B-Instruct:novita" --prompt=.llms/prompts/improve_comments.md --input=/tmp/code.txt --output=.llms/qwen3_improve_comments.md
 
-llm_code_review: repocat
-    python3 .llms/inference/hf.py --model "Qwen/Qwen3-Coder-480B-A35B-Instruct:novita" --prompt=.llms/prompts/code_review.md --input=/tmp/code.txt --output=.llms/code_review.md
+llm_qwen3_code_review: repocat
+    python3 .llms/inference/hf.py --model "Qwen/Qwen3-Coder-480B-A35B-Instruct:novita" --prompt=.llms/prompts/code_review.md --input=/tmp/code.txt --output=.llms/qwen3_code_review.md
+
+llm_glm45air_code_review: repocat
+    python3 .llms/inference/hf.py --model "zai-org/GLM-4.5-Air-FP8:together" --max_tokens 96000 --prompt=.llms/prompts/code_review.md --input=/tmp/code.txt --output=.llms/glm45air_code_review.md

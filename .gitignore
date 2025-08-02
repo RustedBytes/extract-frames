@@ -1,7 +1,10 @@
-/target
-/frames
-/segments
-/.llms/*.md
+target/
+frames/
+segments/
+
+.llms/*.md
+
+.ruff_cache
 
 .env
 .DS_Store
