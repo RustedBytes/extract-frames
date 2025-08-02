@@ -20,6 +20,9 @@ fmt: fmt_yaml
 test:
     cargo test
 
+audit:
+    cargo audit -D warnings
+
 doc:
     cargo doc --open
 
