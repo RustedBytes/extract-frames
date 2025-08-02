@@ -15,7 +15,6 @@ use_field_init_shorthand = true
 use_try_shorthand = true
 where_single_line = true
 wrap_comments = true
-attr_fn_like_width = 120
 blank_lines_upper_bound = 1
 empty_item_single_line = true
 force_multiline_blocks = true
