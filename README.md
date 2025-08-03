@@ -15,9 +15,7 @@ extract-frames --file video.mp4 --multicore
 
 You need to use these tools to make changes in this project:
 
-- `cargo install action-validator`
-- `cargo install repocat`
-- `cargo install just`
+- `cargo install action-validator repocat just`
 - `brew install lefthook`
 - downloaded nightly version of rustc, clippy
 - [gemma-cli](https://github.com/egorsmkv/gemma-cli)
