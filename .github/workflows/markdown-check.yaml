@@ -1,12 +1,12 @@
 name: markdown check
 on:
+  workflow_dispatch:
   push:
     paths:
       - '*.md'
   pull_request:
     paths:
       - '*.md'
-  workflow_dispatch:
 jobs:
   check:
     runs-on: ubuntu-latest

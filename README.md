@@ -1,7 +1,7 @@
 # Extract frames
 
-[![unit tests](https://github.com/egorsmkv/read-video-rs/actions/workflows/test.yml/badge.svg)](https://github.com/egorsmkv/read-video-rs/actions/workflows/test.yml)
-[![security audit](https://github.com/egorsmkv/extract-frames-rs/actions/workflows/audit.yml/badge.svg)](https://github.com/egorsmkv/extract-frames-rs/actions/workflows/audit.yml)
+[![unit tests](https://github.com/egorsmkv/read-video-rs/actions/workflows/test.yaml/badge.svg)](https://github.com/egorsmkv/read-video-rs/actions/workflows/test.yaml)
+[![security audit](https://github.com/egorsmkv/extract-frames-rs/actions/workflows/audit.yaml/badge.svg)](https://github.com/egorsmkv/extract-frames-rs/actions/workflows/audit.yaml)
 
 A Rust-based command-line application for extracting frames from video files
 using FFmpeg, supporting both sequential and parallel processing modes.
