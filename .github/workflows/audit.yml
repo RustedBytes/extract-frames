@@ -2,7 +2,7 @@ name: security audit
 on:
   push:
 jobs:
-  test:
+  audit:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -12,4 +12,4 @@ jobs:
       - name: Install cargo-audit
         run: cargo install cargo-audit
       - name: Run audit
-        run: cargo +nightly audit --target x86_64-unknown-linux-gnu
+        run: cargo +nightly audit
