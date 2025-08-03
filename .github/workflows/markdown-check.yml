@@ -1,4 +1,4 @@
-name: unit tests
+name: markdown check
 on:
   push:
     paths:
@@ -8,10 +8,14 @@ on:
       - '*.md'
   workflow_dispatch:
 jobs:
-  markdown-check:
+  check:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      - name: Check Markdown
+      - name: Check links
         uses: eugenescodes/md-check@main
+      - name: Check markdown
+        uses: DavidAnson/markdownlint-cli2-action@v20
+        with:
+          globs: '**/*.md'
