@@ -1,6 +1,13 @@
 name: security audit
 on:
   push:
+    paths:
+      - '*.toml'
+      - '*.lock'
+  pull_request:
+    paths:
+      - '*.toml'
+      - '*.lock'
 jobs:
   audit:
     runs-on: ubuntu-latest

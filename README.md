@@ -1,4 +1,4 @@
-# Extract frames
+# Extract Frames
 
 [![unit tests](https://github.com/egorsmkv/read-video-rs/actions/workflows/test.yml/badge.svg)](https://github.com/egorsmkv/read-video-rs/actions/workflows/test.yml)
 [![security audit](https://github.com/egorsmkv/extract-frames-rs/actions/workflows/audit.yml/badge.svg)](https://github.com/egorsmkv/extract-frames-rs/actions/workflows/audit.yml)
