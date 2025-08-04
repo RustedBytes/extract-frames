@@ -2,7 +2,7 @@
 mod tests;
 
 use {
-    anyhow::{Context, Result},
+    anyhow::{Context, Error, Result, anyhow, bail},
     clap::Parser,
     glob::glob,
     image::RgbImage,
@@ -99,7 +99,7 @@ const SEGMENTED_FILES_PATTERN: &str = "segments/*.mp4";
 /// Finds all files matching the given glob pattern and returns their paths.
 ///
 /// This function wraps the glob crate functionality with proper error handling
-/// and converts the results to owned `PathBuf` instances. It's used throughout
+/// and converts the results to `AsRef<Path>` instances. It's used throughout
 /// the application for discovering video segments, frame images, and other
 /// generated files.
 ///
@@ -119,7 +119,7 @@ fn get_files(path: impl AsRef<Path>) -> Result<Vec<impl AsRef<Path>>> {
     let pattern_str = path
         .as_ref()
         .to_str()
-        .ok_or_else(|| anyhow::anyhow!("Invalid UTF-8 path for glob pattern: {}", path.as_ref().display()))?;
+        .ok_or_else(|| anyhow!("Invalid UTF-8 path for glob pattern: {}", path.as_ref().display()))?;
 
     let paths = glob(pattern_str)
         .with_context(|| format!("Failed to read glob pattern '{pattern_str}'"))?
@@ -147,7 +147,7 @@ fn get_files(path: impl AsRef<Path>) -> Result<Vec<impl AsRef<Path>>> {
 /// # Logging
 /// * Logs successful removals at debug level
 /// * Logs individual file removal errors at error level
-fn remove_files(paths: &[impl AsRef<Path>]) -> Result<(), anyhow::Error> {
+fn remove_files(paths: &[impl AsRef<Path>]) -> Result<(), Error> {
     let errors: Vec<_> = paths
         .iter()
         .filter_map(|path| {
@@ -163,7 +163,7 @@ fn remove_files(paths: &[impl AsRef<Path>]) -> Result<(), anyhow::Error> {
         .collect();
 
     if !errors.is_empty() {
-        return Err(anyhow::anyhow!("Failed to remove files, enable logging to see them"));
+        return Err(anyhow!("Failed to remove files, enable logging to see them"));
     }
 
     Ok(())
@@ -171,7 +171,7 @@ fn remove_files(paths: &[impl AsRef<Path>]) -> Result<(), anyhow::Error> {
 
 /// Cleans up the working directories by removing all PNG images in the `frames`
 /// folder and all MP4 segments in the `segments` folder. Logs the result.
-fn cleanup_temporary_files() -> Result<(), anyhow::Error> {
+fn cleanup_temporary_files() -> Result<(), Error> {
     let paths: Vec<_> = [FRAME_FILES_PATTERN, SEGMENTED_FILES_PATTERN]
         .iter()
         .filter_map(|pattern| get_files(pattern).ok())
@@ -269,7 +269,7 @@ fn split_into_segments(
     let status = child_process.wait().context("Failed to wait for ffmpeg process")?;
 
     if !status.success() {
-        anyhow::bail!("ffmpeg failed with exit code: {}", status.code().unwrap_or(-1));
+        bail!("ffmpeg failed with exit code: {}", status.code().unwrap_or(-1));
     }
 
     get_files(segmented_files_path)
@@ -304,10 +304,10 @@ fn decode_frames_dropping(
     let frames_path = frames_path.as_ref();
 
     if !video_path.exists() {
-        anyhow::bail!("Input video path does not exist: {video_path:?}");
+        bail!("Input video path does not exist: {video_path:?}");
     }
     if !frames_path.exists() {
-        anyhow::bail!("Output frames path does not exist: {frames_path:?}");
+        bail!("Output frames path does not exist: {frames_path:?}");
     }
 
     let start = Instant::now();
@@ -466,12 +466,11 @@ fn decode_frames_seeking(video_path: impl AsRef<Path>) -> Result<()> {
 /// let pixels = red_pixel.repeat(4); // 2x2 image
 /// save_rgb_to_image(&pixels, 2, 2, Path::new("red_square.png"))?;
 /// ```
-fn save_rgb_to_image(raw_pixels: &[u8], width: u32, height: u32, path: &Path) -> Result<()> {
-    let img_buffer: RgbImage = RgbImage::from_raw(width, height, raw_pixels.to_vec())
-        .context("Could not create ImageBuffer from raw data.")?;
+fn save_rgb_to_image(raw_pixels: &[u8], width: u32, height: u32, path: impl AsRef<Path>) -> Result<()> {
+    let img_buffer: RgbImage =
+        RgbImage::from_raw(width, height, raw_pixels.to_vec()).context("Could not create RgbImage from raw data.")?;
 
     img_buffer.save(path).context("Error saving image")?;
-    debug!("Image successfully saved to {}", path.display());
 
     Ok(())
 }

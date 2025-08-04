@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, anyhow};
 use std::fs::File;
 use std::fs::{create_dir_all, read_dir};
 use std::path::{Path, PathBuf};
@@ -306,7 +306,7 @@ fn test_split_into_segments_creates_segments() -> Result<()> {
     let segmented_files_path = segments_dir.join("*.mp4");
 
     let segment_output_pattern = segment_output_pattern.to_str().ok_or_else(|| {
-        anyhow::anyhow!(
+        anyhow!(
             "Invalid UTF-8 path for glob pattern: {}",
             segment_output_pattern.display()
         )
