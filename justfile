@@ -27,9 +27,7 @@ doc:
     cargo doc --open --no-deps
 
 doc_release:
-    cargo doc --release --no-deps
-    rm -rf docs/
-    mv target/doc/ docs/
+    bash .github/build_docs.sh
 
 release: check
     cargo build --release
