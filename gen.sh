@@ -1,7 +1,7 @@
 #!/usr/bin/bash
 
 rm -rf code
-git clone https://github.com/egorsmkv/extract-frames-rs code
+git clone https://github.com/RustedBytes/extract-frames code
 cd code
 
 cargo +stable doc --release --no-deps
