@@ -2,7 +2,7 @@
 <a href=#2 id=2 data-nosnippet>2</a></span><span class="kw">mod </span>tests;
 <a href=#3 id=3 data-nosnippet>3</a>
 <a href=#4 id=4 data-nosnippet>4</a><span class="kw">use </span>{
-<a href=#5 id=5 data-nosnippet>5</a>    anyhow::{Context, <span class="prelude-ty">Result</span>},
+<a href=#5 id=5 data-nosnippet>5</a>    anyhow::{Context, Error, <span class="prelude-ty">Result</span>, anyhow, bail},
 <a href=#6 id=6 data-nosnippet>6</a>    clap::Parser,
 <a href=#7 id=7 data-nosnippet>7</a>    glob::glob,
 <a href=#8 id=8 data-nosnippet>8</a>    image::RgbImage,
@@ -99,7 +99,7 @@
 <a href=#99 id=99 data-nosnippet>99</a><span class="doccomment">/// Finds all files matching the given glob pattern and returns their paths.
 <a href=#100 id=100 data-nosnippet>100</a>///
 <a href=#101 id=101 data-nosnippet>101</a>/// This function wraps the glob crate functionality with proper error handling
-<a href=#102 id=102 data-nosnippet>102</a>/// and converts the results to owned `PathBuf` instances. It's used throughout
+<a href=#102 id=102 data-nosnippet>102</a>/// and converts the results to `AsRef&lt;Path&gt;` instances. It's used throughout
 <a href=#103 id=103 data-nosnippet>103</a>/// the application for discovering video segments, frame images, and other
 <a href=#104 id=104 data-nosnippet>104</a>/// generated files.
 <a href=#105 id=105 data-nosnippet>105</a>///
@@ -119,7 +119,7 @@
 <a href=#119 id=119 data-nosnippet>119</a>    <span class="kw">let </span>pattern_str = path
 <a href=#120 id=120 data-nosnippet>120</a>        .as_ref()
 <a href=#121 id=121 data-nosnippet>121</a>        .to_str()
-<a href=#122 id=122 data-nosnippet>122</a>        .ok_or_else(|| <span class="macro">anyhow::anyhow!</span>(<span class="string">"Invalid UTF-8 path for glob pattern: {}"</span>, path.as_ref().display()))<span class="question-mark">?</span>;
+<a href=#122 id=122 data-nosnippet>122</a>        .ok_or_else(|| <span class="macro">anyhow!</span>(<span class="string">"Invalid UTF-8 path for glob pattern: {}"</span>, path.as_ref().display()))<span class="question-mark">?</span>;
 <a href=#123 id=123 data-nosnippet>123</a>
 <a href=#124 id=124 data-nosnippet>124</a>    <span class="kw">let </span>paths = glob(pattern_str)
 <a href=#125 id=125 data-nosnippet>125</a>        .with_context(|| <span class="macro">format!</span>(<span class="string">"Failed to read glob pattern '{pattern_str}'"</span>))<span class="question-mark">?
@@ -147,7 +147,7 @@
 <a href=#147 id=147 data-nosnippet>147</a>/// # Logging
 <a href=#148 id=148 data-nosnippet>148</a>/// * Logs successful removals at debug level
 <a href=#149 id=149 data-nosnippet>149</a>/// * Logs individual file removal errors at error level
-<a href=#150 id=150 data-nosnippet>150</a></span><span class="kw">fn </span>remove_files(paths: <span class="kw-2">&amp;</span>[<span class="kw">impl </span>AsRef&lt;Path&gt;]) -&gt; <span class="prelude-ty">Result</span>&lt;(), anyhow::Error&gt; {
+<a href=#150 id=150 data-nosnippet>150</a></span><span class="kw">fn </span>remove_files(paths: <span class="kw-2">&amp;</span>[<span class="kw">impl </span>AsRef&lt;Path&gt;]) -&gt; <span class="prelude-ty">Result</span>&lt;(), Error&gt; {
 <a href=#151 id=151 data-nosnippet>151</a>    <span class="kw">let </span>errors: Vec&lt;<span class="kw">_</span>&gt; = paths
 <a href=#152 id=152 data-nosnippet>152</a>        .iter()
 <a href=#153 id=153 data-nosnippet>153</a>        .filter_map(|path| {
@@ -163,7 +163,7 @@
 <a href=#163 id=163 data-nosnippet>163</a>        .collect();
 <a href=#164 id=164 data-nosnippet>164</a>
 <a href=#165 id=165 data-nosnippet>165</a>    <span class="kw">if </span>!errors.is_empty() {
-<a href=#166 id=166 data-nosnippet>166</a>        <span class="kw">return </span><span class="prelude-val">Err</span>(<span class="macro">anyhow::anyhow!</span>(<span class="string">"Failed to remove files, enable logging to see them"</span>));
+<a href=#166 id=166 data-nosnippet>166</a>        <span class="kw">return </span><span class="prelude-val">Err</span>(<span class="macro">anyhow!</span>(<span class="string">"Failed to remove files, enable logging to see them"</span>));
 <a href=#167 id=167 data-nosnippet>167</a>    }
 <a href=#168 id=168 data-nosnippet>168</a>
 <a href=#169 id=169 data-nosnippet>169</a>    <span class="prelude-val">Ok</span>(())
@@ -171,7 +171,7 @@
 <a href=#171 id=171 data-nosnippet>171</a>
 <a href=#172 id=172 data-nosnippet>172</a><span class="doccomment">/// Cleans up the working directories by removing all PNG images in the `frames`
 <a href=#173 id=173 data-nosnippet>173</a>/// folder and all MP4 segments in the `segments` folder. Logs the result.
-<a href=#174 id=174 data-nosnippet>174</a></span><span class="kw">fn </span>cleanup_temporary_files() -&gt; <span class="prelude-ty">Result</span>&lt;(), anyhow::Error&gt; {
+<a href=#174 id=174 data-nosnippet>174</a></span><span class="kw">fn </span>cleanup_temporary_files() -&gt; <span class="prelude-ty">Result</span>&lt;(), Error&gt; {
 <a href=#175 id=175 data-nosnippet>175</a>    <span class="kw">let </span>paths: Vec&lt;<span class="kw">_</span>&gt; = [FRAME_FILES_PATTERN, SEGMENTED_FILES_PATTERN]
 <a href=#176 id=176 data-nosnippet>176</a>        .iter()
 <a href=#177 id=177 data-nosnippet>177</a>        .filter_map(|pattern| get_files(pattern).ok())
@@ -269,7 +269,7 @@
 <a href=#269 id=269 data-nosnippet>269</a>    <span class="kw">let </span>status = child_process.wait().context(<span class="string">"Failed to wait for ffmpeg process"</span>)<span class="question-mark">?</span>;
 <a href=#270 id=270 data-nosnippet>270</a>
 <a href=#271 id=271 data-nosnippet>271</a>    <span class="kw">if </span>!status.success() {
-<a href=#272 id=272 data-nosnippet>272</a>        <span class="macro">anyhow::bail!</span>(<span class="string">"ffmpeg failed with exit code: {}"</span>, status.code().unwrap_or(-<span class="number">1</span>));
+<a href=#272 id=272 data-nosnippet>272</a>        <span class="macro">bail!</span>(<span class="string">"ffmpeg failed with exit code: {}"</span>, status.code().unwrap_or(-<span class="number">1</span>));
 <a href=#273 id=273 data-nosnippet>273</a>    }
 <a href=#274 id=274 data-nosnippet>274</a>
 <a href=#275 id=275 data-nosnippet>275</a>    get_files(segmented_files_path)
@@ -304,10 +304,10 @@
 <a href=#304 id=304 data-nosnippet>304</a>    <span class="kw">let </span>frames_path = frames_path.as_ref();
 <a href=#305 id=305 data-nosnippet>305</a>
 <a href=#306 id=306 data-nosnippet>306</a>    <span class="kw">if </span>!video_path.exists() {
-<a href=#307 id=307 data-nosnippet>307</a>        <span class="macro">anyhow::bail!</span>(<span class="string">"Input video path does not exist: {video_path:?}"</span>);
+<a href=#307 id=307 data-nosnippet>307</a>        <span class="macro">bail!</span>(<span class="string">"Input video path does not exist: {video_path:?}"</span>);
 <a href=#308 id=308 data-nosnippet>308</a>    }
 <a href=#309 id=309 data-nosnippet>309</a>    <span class="kw">if </span>!frames_path.exists() {
-<a href=#310 id=310 data-nosnippet>310</a>        <span class="macro">anyhow::bail!</span>(<span class="string">"Output frames path does not exist: {frames_path:?}"</span>);
+<a href=#310 id=310 data-nosnippet>310</a>        <span class="macro">bail!</span>(<span class="string">"Output frames path does not exist: {frames_path:?}"</span>);
 <a href=#311 id=311 data-nosnippet>311</a>    }
 <a href=#312 id=312 data-nosnippet>312</a>
 <a href=#313 id=313 data-nosnippet>313</a>    <span class="kw">let </span>start = Instant::now();
@@ -466,93 +466,92 @@
 <a href=#466 id=466 data-nosnippet>466</a>/// let pixels = red_pixel.repeat(4); // 2x2 image
 <a href=#467 id=467 data-nosnippet>467</a>/// save_rgb_to_image(&amp;pixels, 2, 2, Path::new("red_square.png"))?;
 <a href=#468 id=468 data-nosnippet>468</a>/// ```
-<a href=#469 id=469 data-nosnippet>469</a></span><span class="kw">fn </span>save_rgb_to_image(raw_pixels: <span class="kw-2">&amp;</span>[u8], width: u32, height: u32, path: <span class="kw-2">&amp;</span>Path) -&gt; <span class="prelude-ty">Result</span>&lt;()&gt; {
-<a href=#470 id=470 data-nosnippet>470</a>    <span class="kw">let </span>img_buffer: RgbImage = RgbImage::from_raw(width, height, raw_pixels.to_vec())
-<a href=#471 id=471 data-nosnippet>471</a>        .context(<span class="string">"Could not create ImageBuffer from raw data."</span>)<span class="question-mark">?</span>;
+<a href=#469 id=469 data-nosnippet>469</a></span><span class="kw">fn </span>save_rgb_to_image(raw_pixels: <span class="kw-2">&amp;</span>[u8], width: u32, height: u32, path: <span class="kw">impl </span>AsRef&lt;Path&gt;) -&gt; <span class="prelude-ty">Result</span>&lt;()&gt; {
+<a href=#470 id=470 data-nosnippet>470</a>    <span class="kw">let </span>img_buffer: RgbImage =
+<a href=#471 id=471 data-nosnippet>471</a>        RgbImage::from_raw(width, height, raw_pixels.to_vec()).context(<span class="string">"Could not create RgbImage from raw data."</span>)<span class="question-mark">?</span>;
 <a href=#472 id=472 data-nosnippet>472</a>
 <a href=#473 id=473 data-nosnippet>473</a>    img_buffer.save(path).context(<span class="string">"Error saving image"</span>)<span class="question-mark">?</span>;
-<a href=#474 id=474 data-nosnippet>474</a>    <span class="macro">debug!</span>(<span class="string">"Image successfully saved to {}"</span>, path.display());
-<a href=#475 id=475 data-nosnippet>475</a>
-<a href=#476 id=476 data-nosnippet>476</a>    <span class="prelude-val">Ok</span>(())
-<a href=#477 id=477 data-nosnippet>477</a>}
-<a href=#478 id=478 data-nosnippet>478</a>
-<a href=#479 id=479 data-nosnippet>479</a><span class="doccomment">/// Main entry point for the frame extraction application.
-<a href=#480 id=480 data-nosnippet>480</a>///
-<a href=#481 id=481 data-nosnippet>481</a>/// Parses command line arguments, initializes dependencies, and executes
-<a href=#482 id=482 data-nosnippet>482</a>/// the frame extraction process based on user selections. Supports
-<a href=#483 id=483 data-nosnippet>483</a>/// sequential processing, seek-based extraction, and parallel segment
-<a href=#484 id=484 data-nosnippet>484</a>/// processing.
-<a href=#485 id=485 data-nosnippet>485</a>///
-<a href=#486 id=486 data-nosnippet>486</a>/// # Processing Modes
-<a href=#487 id=487 data-nosnippet>487</a>/// * Standard (default) - Sequential frame dropping with
-<a href=#488 id=488 data-nosnippet>488</a>///   `FRAMES_BETWEEN_EXTRACTED` interval
-<a href=#489 id=489 data-nosnippet>489</a>/// * Seek-based (--use-seek) - Extract one frame per second using seeking
-<a href=#490 id=490 data-nosnippet>490</a>/// * Parallel (--multicore) - Process video segments in parallel
-<a href=#491 id=491 data-nosnippet>491</a>///
-<a href=#492 id=492 data-nosnippet>492</a>/// # Workflow
-<a href=#493 id=493 data-nosnippet>493</a>/// 1. Initialize logging and video processing libraries
-<a href=#494 id=494 data-nosnippet>494</a>/// 2. Create frames/ and segments/ directories
-<a href=#495 id=495 data-nosnippet>495</a>/// 3. Clean up previous files
-<a href=#496 id=496 data-nosnippet>496</a>/// 4. Process video based on selected mode
-<a href=#497 id=497 data-nosnippet>497</a>/// 5. Remove temporary segment files
-<a href=#498 id=498 data-nosnippet>498</a>///
-<a href=#499 id=499 data-nosnippet>499</a>/// # Arguments
-<a href=#500 id=500 data-nosnippet>500</a>/// See Args struct for detailed command line options.
-<a href=#501 id=501 data-nosnippet>501</a>///
-<a href=#502 id=502 data-nosnippet>502</a>/// # Returns
-<a href=#503 id=503 data-nosnippet>503</a>/// * `Ok(())` on successful completion
-<a href=#504 id=504 data-nosnippet>504</a>/// * `Err` with error details if processing fails
-<a href=#505 id=505 data-nosnippet>505</a>///
-<a href=#506 id=506 data-nosnippet>506</a>/// # Example Usage
-<a href=#507 id=507 data-nosnippet>507</a>/// ```bash
-<a href=#508 id=508 data-nosnippet>508</a>/// # Basic frame extraction (every 30th frame)
-<a href=#509 id=509 data-nosnippet>509</a>/// cargo run -- --file input.mp4
-<a href=#510 id=510 data-nosnippet>510</a>///
-<a href=#511 id=511 data-nosnippet>511</a>/// # Extract one frame per second
-<a href=#512 id=512 data-nosnippet>512</a>/// cargo run -- --file input.mp4 --use-seek
-<a href=#513 id=513 data-nosnippet>513</a>///
-<a href=#514 id=514 data-nosnippet>514</a>/// # Parallel processing for large videos
-<a href=#515 id=515 data-nosnippet>515</a>/// cargo run -- --file input.mp4 --multicore
-<a href=#516 id=516 data-nosnippet>516</a>/// ```
-<a href=#517 id=517 data-nosnippet>517</a></span><span class="kw">fn </span>main() -&gt; <span class="prelude-ty">Result</span>&lt;(), anyhow::Error&gt; {
-<a href=#518 id=518 data-nosnippet>518</a>    <span class="kw">let </span>args = Args::parse();
-<a href=#519 id=519 data-nosnippet>519</a>
-<a href=#520 id=520 data-nosnippet>520</a>    tracing_subscriber::fmt::init();
-<a href=#521 id=521 data-nosnippet>521</a>    video_rs::init().expect(<span class="string">"video-rs failed to initialize"</span>);
-<a href=#522 id=522 data-nosnippet>522</a>
-<a href=#523 id=523 data-nosnippet>523</a>    create_dir_all(<span class="string">"frames"</span>).context(<span class="string">"failed to create frames directory"</span>)<span class="question-mark">?</span>;
-<a href=#524 id=524 data-nosnippet>524</a>    create_dir_all(<span class="string">"segments"</span>).context(<span class="string">"failed to create segments directory"</span>)<span class="question-mark">?</span>;
-<a href=#525 id=525 data-nosnippet>525</a>
-<a href=#526 id=526 data-nosnippet>526</a>    cleanup_temporary_files()<span class="question-mark">?</span>;
-<a href=#527 id=527 data-nosnippet>527</a>
-<a href=#528 id=528 data-nosnippet>528</a>    <span class="kw">let </span>path = env::current_dir().context(<span class="string">"failed to get current path"</span>)<span class="question-mark">?</span>;
-<a href=#529 id=529 data-nosnippet>529</a>    <span class="kw">let </span>frames_path = path.join(<span class="string">"frames"</span>);
-<a href=#530 id=530 data-nosnippet>530</a>
-<a href=#531 id=531 data-nosnippet>531</a>    <span class="kw">if </span>args.multicore {
-<a href=#532 id=532 data-nosnippet>532</a>        <span class="kw">let </span>segments = split_into_segments(<span class="kw-2">&amp;</span>args.file, SEGMENT_OUTPUT_PATTERN, SEGMENTED_FILES_PATTERN)<span class="question-mark">?</span>;
-<a href=#533 id=533 data-nosnippet>533</a>
-<a href=#534 id=534 data-nosnippet>534</a>        <span class="macro">info!</span>(<span class="string">"Segments: {}"</span>, segments.len());
-<a href=#535 id=535 data-nosnippet>535</a>
-<a href=#536 id=536 data-nosnippet>536</a>        <span class="kw">let </span>start = Instant::now();
-<a href=#537 id=537 data-nosnippet>537</a>        segments.par_iter().enumerate().for_each(|(n, path)| {
-<a href=#538 id=538 data-nosnippet>538</a>            <span class="kw">let </span>prefix = <span class="macro">format!</span>(<span class="string">"segment-{n}"</span>);
-<a href=#539 id=539 data-nosnippet>539</a>
-<a href=#540 id=540 data-nosnippet>540</a>            <span class="kw">if let </span><span class="prelude-val">Err</span>(e) = decode_frames_dropping(<span class="kw-2">&amp;</span>prefix, path, <span class="kw-2">&amp;</span>frames_path) {
-<a href=#541 id=541 data-nosnippet>541</a>                <span class="macro">error!</span>(<span class="string">"Error processing segment {n}: {e:?}"</span>);
-<a href=#542 id=542 data-nosnippet>542</a>            }
-<a href=#543 id=543 data-nosnippet>543</a>        });
-<a href=#544 id=544 data-nosnippet>544</a>
-<a href=#545 id=545 data-nosnippet>545</a>        <span class="macro">info!</span>(<span class="string">"Elapsed total: {:.2?}"</span>, start.elapsed());
-<a href=#546 id=546 data-nosnippet>546</a>    } <span class="kw">else if </span>args.use_seek {
-<a href=#547 id=547 data-nosnippet>547</a>        <span class="comment">// FIXME: The seek-based method is experimental and may not produce correct
-<a href=#548 id=548 data-nosnippet>548</a>        // output.
-<a href=#549 id=549 data-nosnippet>549</a>        </span>decode_frames_seeking(<span class="kw-2">&amp;</span>args.file)<span class="question-mark">?</span>;
-<a href=#550 id=550 data-nosnippet>550</a>    } <span class="kw">else </span>{
-<a href=#551 id=551 data-nosnippet>551</a>        decode_frames_dropping(<span class="string">"full"</span>, <span class="kw-2">&amp;</span>args.file, <span class="kw-2">&amp;</span>frames_path)<span class="question-mark">?</span>;
-<a href=#552 id=552 data-nosnippet>552</a>    }
-<a href=#553 id=553 data-nosnippet>553</a>
-<a href=#554 id=554 data-nosnippet>554</a>    <span class="kw">let </span>segments_dir = Path::new(<span class="string">"segments"</span>);
-<a href=#555 id=555 data-nosnippet>555</a>    remove_folder(segments_dir)<span class="question-mark">?</span>;
-<a href=#556 id=556 data-nosnippet>556</a>
-<a href=#557 id=557 data-nosnippet>557</a>    <span class="prelude-val">Ok</span>(())
-<a href=#558 id=558 data-nosnippet>558</a>}</code></pre></div></section></main></body></html>
+<a href=#474 id=474 data-nosnippet>474</a>
+<a href=#475 id=475 data-nosnippet>475</a>    <span class="prelude-val">Ok</span>(())
+<a href=#476 id=476 data-nosnippet>476</a>}
+<a href=#477 id=477 data-nosnippet>477</a>
+<a href=#478 id=478 data-nosnippet>478</a><span class="doccomment">/// Main entry point for the frame extraction application.
+<a href=#479 id=479 data-nosnippet>479</a>///
+<a href=#480 id=480 data-nosnippet>480</a>/// Parses command line arguments, initializes dependencies, and executes
+<a href=#481 id=481 data-nosnippet>481</a>/// the frame extraction process based on user selections. Supports
+<a href=#482 id=482 data-nosnippet>482</a>/// sequential processing, seek-based extraction, and parallel segment
+<a href=#483 id=483 data-nosnippet>483</a>/// processing.
+<a href=#484 id=484 data-nosnippet>484</a>///
+<a href=#485 id=485 data-nosnippet>485</a>/// # Processing Modes
+<a href=#486 id=486 data-nosnippet>486</a>/// * Standard (default) - Sequential frame dropping with
+<a href=#487 id=487 data-nosnippet>487</a>///   `FRAMES_BETWEEN_EXTRACTED` interval
+<a href=#488 id=488 data-nosnippet>488</a>/// * Seek-based (--use-seek) - Extract one frame per second using seeking
+<a href=#489 id=489 data-nosnippet>489</a>/// * Parallel (--multicore) - Process video segments in parallel
+<a href=#490 id=490 data-nosnippet>490</a>///
+<a href=#491 id=491 data-nosnippet>491</a>/// # Workflow
+<a href=#492 id=492 data-nosnippet>492</a>/// 1. Initialize logging and video processing libraries
+<a href=#493 id=493 data-nosnippet>493</a>/// 2. Create frames/ and segments/ directories
+<a href=#494 id=494 data-nosnippet>494</a>/// 3. Clean up previous files
+<a href=#495 id=495 data-nosnippet>495</a>/// 4. Process video based on selected mode
+<a href=#496 id=496 data-nosnippet>496</a>/// 5. Remove temporary segment files
+<a href=#497 id=497 data-nosnippet>497</a>///
+<a href=#498 id=498 data-nosnippet>498</a>/// # Arguments
+<a href=#499 id=499 data-nosnippet>499</a>/// See Args struct for detailed command line options.
+<a href=#500 id=500 data-nosnippet>500</a>///
+<a href=#501 id=501 data-nosnippet>501</a>/// # Returns
+<a href=#502 id=502 data-nosnippet>502</a>/// * `Ok(())` on successful completion
+<a href=#503 id=503 data-nosnippet>503</a>/// * `Err` with error details if processing fails
+<a href=#504 id=504 data-nosnippet>504</a>///
+<a href=#505 id=505 data-nosnippet>505</a>/// # Example Usage
+<a href=#506 id=506 data-nosnippet>506</a>/// ```bash
+<a href=#507 id=507 data-nosnippet>507</a>/// # Basic frame extraction (every 30th frame)
+<a href=#508 id=508 data-nosnippet>508</a>/// cargo run -- --file input.mp4
+<a href=#509 id=509 data-nosnippet>509</a>///
+<a href=#510 id=510 data-nosnippet>510</a>/// # Extract one frame per second
+<a href=#511 id=511 data-nosnippet>511</a>/// cargo run -- --file input.mp4 --use-seek
+<a href=#512 id=512 data-nosnippet>512</a>///
+<a href=#513 id=513 data-nosnippet>513</a>/// # Parallel processing for large videos
+<a href=#514 id=514 data-nosnippet>514</a>/// cargo run -- --file input.mp4 --multicore
+<a href=#515 id=515 data-nosnippet>515</a>/// ```
+<a href=#516 id=516 data-nosnippet>516</a></span><span class="kw">fn </span>main() -&gt; <span class="prelude-ty">Result</span>&lt;(), anyhow::Error&gt; {
+<a href=#517 id=517 data-nosnippet>517</a>    <span class="kw">let </span>args = Args::parse();
+<a href=#518 id=518 data-nosnippet>518</a>
+<a href=#519 id=519 data-nosnippet>519</a>    tracing_subscriber::fmt::init();
+<a href=#520 id=520 data-nosnippet>520</a>    video_rs::init().expect(<span class="string">"video-rs failed to initialize"</span>);
+<a href=#521 id=521 data-nosnippet>521</a>
+<a href=#522 id=522 data-nosnippet>522</a>    create_dir_all(<span class="string">"frames"</span>).context(<span class="string">"failed to create frames directory"</span>)<span class="question-mark">?</span>;
+<a href=#523 id=523 data-nosnippet>523</a>    create_dir_all(<span class="string">"segments"</span>).context(<span class="string">"failed to create segments directory"</span>)<span class="question-mark">?</span>;
+<a href=#524 id=524 data-nosnippet>524</a>
+<a href=#525 id=525 data-nosnippet>525</a>    cleanup_temporary_files()<span class="question-mark">?</span>;
+<a href=#526 id=526 data-nosnippet>526</a>
+<a href=#527 id=527 data-nosnippet>527</a>    <span class="kw">let </span>path = env::current_dir().context(<span class="string">"failed to get current path"</span>)<span class="question-mark">?</span>;
+<a href=#528 id=528 data-nosnippet>528</a>    <span class="kw">let </span>frames_path = path.join(<span class="string">"frames"</span>);
+<a href=#529 id=529 data-nosnippet>529</a>
+<a href=#530 id=530 data-nosnippet>530</a>    <span class="kw">if </span>args.multicore {
+<a href=#531 id=531 data-nosnippet>531</a>        <span class="kw">let </span>segments = split_into_segments(<span class="kw-2">&amp;</span>args.file, SEGMENT_OUTPUT_PATTERN, SEGMENTED_FILES_PATTERN)<span class="question-mark">?</span>;
+<a href=#532 id=532 data-nosnippet>532</a>
+<a href=#533 id=533 data-nosnippet>533</a>        <span class="macro">info!</span>(<span class="string">"Segments: {}"</span>, segments.len());
+<a href=#534 id=534 data-nosnippet>534</a>
+<a href=#535 id=535 data-nosnippet>535</a>        <span class="kw">let </span>start = Instant::now();
+<a href=#536 id=536 data-nosnippet>536</a>        segments.par_iter().enumerate().for_each(|(n, path)| {
+<a href=#537 id=537 data-nosnippet>537</a>            <span class="kw">let </span>prefix = <span class="macro">format!</span>(<span class="string">"segment-{n}"</span>);
+<a href=#538 id=538 data-nosnippet>538</a>
+<a href=#539 id=539 data-nosnippet>539</a>            <span class="kw">if let </span><span class="prelude-val">Err</span>(e) = decode_frames_dropping(<span class="kw-2">&amp;</span>prefix, path, <span class="kw-2">&amp;</span>frames_path) {
+<a href=#540 id=540 data-nosnippet>540</a>                <span class="macro">error!</span>(<span class="string">"Error processing segment {n}: {e:?}"</span>);
+<a href=#541 id=541 data-nosnippet>541</a>            }
+<a href=#542 id=542 data-nosnippet>542</a>        });
+<a href=#543 id=543 data-nosnippet>543</a>
+<a href=#544 id=544 data-nosnippet>544</a>        <span class="macro">info!</span>(<span class="string">"Elapsed total: {:.2?}"</span>, start.elapsed());
+<a href=#545 id=545 data-nosnippet>545</a>    } <span class="kw">else if </span>args.use_seek {
+<a href=#546 id=546 data-nosnippet>546</a>        <span class="comment">// FIXME: The seek-based method is experimental and may not produce correct
+<a href=#547 id=547 data-nosnippet>547</a>        // output.
+<a href=#548 id=548 data-nosnippet>548</a>        </span>decode_frames_seeking(<span class="kw-2">&amp;</span>args.file)<span class="question-mark">?</span>;
+<a href=#549 id=549 data-nosnippet>549</a>    } <span class="kw">else </span>{
+<a href=#550 id=550 data-nosnippet>550</a>        decode_frames_dropping(<span class="string">"full"</span>, <span class="kw-2">&amp;</span>args.file, <span class="kw-2">&amp;</span>frames_path)<span class="question-mark">?</span>;
+<a href=#551 id=551 data-nosnippet>551</a>    }
+<a href=#552 id=552 data-nosnippet>552</a>
+<a href=#553 id=553 data-nosnippet>553</a>    <span class="kw">let </span>segments_dir = Path::new(<span class="string">"segments"</span>);
+<a href=#554 id=554 data-nosnippet>554</a>    remove_folder(segments_dir)<span class="question-mark">?</span>;
+<a href=#555 id=555 data-nosnippet>555</a>
+<a href=#556 id=556 data-nosnippet>556</a>    <span class="prelude-val">Ok</span>(())
+<a href=#557 id=557 data-nosnippet>557</a>}</code></pre></div></section></main></body></html>

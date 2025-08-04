@@ -10,3 +10,7 @@ mv target/doc/ ../docs/
 cd ..
 
 rm -rf code
+
+git add -A
+git commit -m "Update the docs"
+git push
