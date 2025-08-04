@@ -1,6 +1,6 @@
 # Extract frames
 
-[![unit tests](https://github.com/egorsmkv/read-video-rs/actions/workflows/test.yaml/badge.svg)](https://github.com/egorsmkv/read-video-rs/actions/workflows/test.yaml)
+[![unit tests](https://github.com/egorsmkv/extract-frames-rs/actions/workflows/test.yaml/badge.svg)](https://github.com/egorsmkv/extract-frames-rs/actions/workflows/test.yaml)
 [![security audit](https://github.com/egorsmkv/extract-frames-rs/actions/workflows/audit.yaml/badge.svg)](https://github.com/egorsmkv/extract-frames-rs/actions/workflows/audit.yaml)
 
 A Rust-based command-line application for extracting frames from video files
@@ -76,9 +76,10 @@ To contribute to this project, you'll need:
 
 1. Rust toolchain (nightly version recommended)
 2. `cargo install action-validator dircat just`
-3. `cargo install --git https://github.com/ytmimi/markdown-fmt markdown-fmt --features="build-binary"`
-4. `brew install lefthook` (for pre-commit hooks)
-5. [gemma-cli](https://github.com/egorsmkv/gemma-cli) (for LLM interactions)
+3. `carcargo install --git https://github.com/RustedBytes/invoke-llm`
+4. `cargo install --git https://github.com/ytmimi/markdown-fmt markdown-fmt
+   --features="build-binary"`
+5. `brew install lefthook` (for pre-commit hooks)
 6. [yamlfmt](https://github.com/google/yamlfmt) (for YAML formatting)
 
 ## Building and Testing
