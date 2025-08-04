@@ -24,7 +24,12 @@ audit:
     cargo audit -D warnings
 
 doc:
-    cargo doc --open
+    cargo doc --open --no-deps
+
+doc_release:
+    cargo doc --release --no-deps
+    rm -rf docs/
+    mv target/doc/ docs/
 
 release: check
     cargo build --release

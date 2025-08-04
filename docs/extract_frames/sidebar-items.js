@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["FRAMES_BETWEEN_EXTRACTED","FRAME_FILES_PATTERN","SEGMENTED_FILES_PATTERN","SEGMENT_DURATION_SECONDS","SEGMENT_OUTPUT_PATTERN"],"fn":["cleanup_temporary_files","decode_frames_dropping","decode_frames_seeking","get_files","main","remove_files","remove_folder","save_rgb_to_image","split_into_segments"],"struct":["Args"]};
