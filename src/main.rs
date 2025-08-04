@@ -12,7 +12,6 @@ use {
     std::{
         env,
         fs::{create_dir_all, remove_dir_all, remove_file},
-        io::Error,
         path::{Path, PathBuf},
         process::{Command, Stdio},
         time::Instant,
@@ -108,7 +107,7 @@ const SEGMENTED_FILES_PATTERN: &str = "segments/*.mp4";
 /// * `path` - A path pattern supporting glob wildcards (*, ?, \[abc\], etc.)
 ///
 /// # Returns
-/// * `Ok(Vec<PathBuf>)` - Vector of matching file paths
+/// * `Ok(Vec<impl AsRef<Path>>)` - Vector of matching file paths
 /// * `Err` - If the pattern is invalid UTF-8 or glob matching fails
 ///
 /// # Examples
@@ -116,7 +115,7 @@ const SEGMENTED_FILES_PATTERN: &str = "segments/*.mp4";
 /// let paths = get_files("frames/*.png")?; // Find all PNG frames
 /// let segments = get_files("segments/*.mp4")?; // Find all MP4 segments
 /// ```
-fn get_files(path: impl AsRef<Path>) -> Result<Vec<PathBuf>> {
+fn get_files(path: impl AsRef<Path>) -> Result<Vec<impl AsRef<Path>>> {
     let pattern_str = path
         .as_ref()
         .to_str()
@@ -142,18 +141,19 @@ fn get_files(path: impl AsRef<Path>) -> Result<Vec<PathBuf>> {
 ///
 /// # Returns
 /// * `Ok(())` if all files were successfully removed or if the input was empty
-/// * `Err(Vec<Error>)` containing all errors encountered during removal
-///   attempts
+/// * `Err(anyhow::Error)` containing an error encountered during removal
+///   attempt
 ///
 /// # Logging
 /// * Logs successful removals at debug level
 /// * Logs individual file removal errors at error level
-fn remove_files(paths: &[PathBuf]) -> Result<(), Vec<Error>> {
+fn remove_files(paths: &[impl AsRef<Path>]) -> Result<(), anyhow::Error> {
     let errors: Vec<_> = paths
         .iter()
         .filter_map(|path| {
+            let path = path.as_ref();
             if let Err(err) = remove_file(path) {
-                error!("Failed to remove file {}: {}", path.display(), err);
+                error!("Failed to remove file {}: {err}", path.display());
                 Some(err)
             } else {
                 debug!("Successfully removed file: {}", path.display());
@@ -162,26 +162,23 @@ fn remove_files(paths: &[PathBuf]) -> Result<(), Vec<Error>> {
         })
         .collect();
 
-    if errors.is_empty() { Ok(()) } else { Err(errors) }
+    if !errors.is_empty() {
+        return Err(anyhow::anyhow!("Failed to remove files, enable logging to see them"));
+    }
+
+    Ok(())
 }
 
 /// Cleans up the working directories by removing all PNG images in the `frames`
 /// folder and all MP4 segments in the `segments` folder. Logs the result.
-fn cleanup_temporary_files() {
+fn cleanup_temporary_files() -> Result<(), anyhow::Error> {
     let paths: Vec<_> = [FRAME_FILES_PATTERN, SEGMENTED_FILES_PATTERN]
         .iter()
         .filter_map(|pattern| get_files(pattern).ok())
         .flatten()
         .collect();
 
-    match remove_files(&paths) {
-        Ok(()) => {
-            info!("All previous items (n={}) were successfully removed.", paths.len());
-        },
-        Err(errors) => {
-            error!("Encountered {} errors during file cleanup.", errors.len());
-        },
-    }
+    remove_files(&paths)
 }
 
 /// Removes a directory and all its contents recursively.
@@ -200,7 +197,8 @@ fn cleanup_temporary_files() {
 /// ```
 /// remove_folder(Path::new("temporary_files"))?;
 /// ```
-fn remove_folder(path: &Path) -> Result<()> {
+fn remove_folder(path: impl AsRef<Path>) -> Result<()> {
+    let path = path.as_ref();
     remove_dir_all(path).with_context(|| format!("Failed to remove folder '{}'", path.display()))
 }
 
@@ -241,17 +239,17 @@ fn remove_folder(path: &Path) -> Result<()> {
 /// * `-f segment` - Use segment muxer for splitting
 /// * `-reset_timestamps 1` - Reset timestamps for each segment
 fn split_into_segments(
-    path: &Path,
+    path: impl AsRef<Path>,
     segment_output_pattern: &str,
     segmented_files_path: impl AsRef<Path>,
-) -> Result<Vec<PathBuf>> {
+) -> Result<Vec<impl AsRef<Path>>> {
     info!("Starting ffmpeg process in the background...");
 
     let mut child_process = Command::new("ffmpeg")
         .arg("-v")
         .arg("quiet")
         .arg("-i")
-        .arg(path)
+        .arg(path.as_ref())
         .arg("-c")
         .arg("copy")
         .arg("-map")
@@ -297,12 +295,19 @@ fn split_into_segments(
 /// * Memory usage scales with `FRAMES_BETWEEN_EXTRACTED` value (lower = more
 ///   memory)
 /// * Single-threaded operation unless called within parallel context
-fn decode_frames_dropping(frame_prefix: &str, video_path: &Path, frames_path: &Path) -> Result<()> {
+fn decode_frames_dropping(
+    frame_prefix: &str,
+    video_path: impl AsRef<Path>,
+    frames_path: impl AsRef<Path>,
+) -> Result<()> {
+    let video_path = video_path.as_ref();
+    let frames_path = frames_path.as_ref();
+
     if !video_path.exists() {
-        anyhow::bail!("Input video path does not exist: {}", video_path.display());
+        anyhow::bail!("Input video path does not exist: {video_path:?}");
     }
     if !frames_path.exists() {
-        anyhow::bail!("Output frames path does not exist: {}", frames_path.display());
+        anyhow::bail!("Output frames path does not exist: {frames_path:?}");
     }
 
     let start = Instant::now();
@@ -360,8 +365,9 @@ fn decode_frames_dropping(frame_prefix: &str, video_path: &Path, frames_path: &P
 /// * Seek accuracy depends on video keyframe spacing
 /// * May skip frames in areas with sparse keyframes
 /// * Higher CPU usage due to seeking overhead
-fn decode_frames_seeking(video_path: &Path) -> Result<()> {
+fn decode_frames_seeking(video_path: impl AsRef<Path>) -> Result<()> {
     let start = Instant::now();
+    let video_path = video_path.as_ref();
 
     let mut decoder = Decoder::new(video_path).context("failed to create decoder")?;
 
@@ -508,7 +514,7 @@ fn save_rgb_to_image(raw_pixels: &[u8], width: u32, height: u32, path: &Path) ->
 /// # Parallel processing for large videos
 /// cargo run -- --file input.mp4 --multicore
 /// ```
-fn main() -> Result<()> {
+fn main() -> Result<(), anyhow::Error> {
     let args = Args::parse();
 
     tracing_subscriber::fmt::init();
@@ -517,7 +523,7 @@ fn main() -> Result<()> {
     create_dir_all("frames").context("failed to create frames directory")?;
     create_dir_all("segments").context("failed to create segments directory")?;
 
-    cleanup_temporary_files();
+    cleanup_temporary_files()?;
 
     let path = env::current_dir().context("failed to get current path")?;
     let frames_path = path.join("frames");

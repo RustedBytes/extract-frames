@@ -1,3 +1,4 @@
+use anyhow::{Context, Result};
 use std::fs::File;
 use std::fs::{create_dir_all, read_dir};
 use std::path::{Path, PathBuf};
@@ -22,7 +23,7 @@ use crate::{
 /// # Panics
 /// * If ffmpeg command fails to execute
 /// * If ffmpeg exits with non-zero status code
-fn create_dummy_video(dest: &Path) {
+fn create_dummy_video(dest: impl AsRef<Path>) -> Result<impl AsRef<Path>> {
     // Generate a 120-second black video using ffmpeg (must be installed)
     let ffmpeg_result = Command::new("ffmpeg")
         .arg("-y")
@@ -32,15 +33,17 @@ fn create_dummy_video(dest: &Path) {
         .arg("color=c=black:s=64x64:d=120:r=30")
         .arg("-c:v")
         .arg("libx264")
-        .arg(dest)
+        .arg(dest.as_ref())
         .output()
-        .expect("Failed to run ffmpeg to create dummy video");
+        .context("Failed to run ffmpeg to create dummy video")?;
 
     assert!(
         ffmpeg_result.status.success(),
         "ffmpeg did not produce test video. stderr: {}",
         String::from_utf8_lossy(&ffmpeg_result.stderr)
     );
+
+    Ok(dest)
 }
 
 /// Verifies that ffmpeg is installed and accessible in the system PATH.
@@ -49,20 +52,16 @@ fn create_dummy_video(dest: &Path) {
 /// required for creating dummy videos and running video processing tests.
 /// The test checks both command execution success and proper version output.
 #[test]
-fn test_ffmpeg_exists() {
-    let output = Command::new("ffmpeg").arg("-version").output();
+fn test_ffmpeg_exists() -> Result<()> {
+    let output = Command::new("ffmpeg").arg("-version").output()?;
 
-    assert!(
-        output.is_ok(),
-        "Failed to execute 'ffmpeg'. Is ffmpeg installed and available in PATH?"
-    );
-
-    let output = output.unwrap();
     assert!(
         output.status.success(),
         "'ffmpeg' did not exit successfully. Output: {}",
         String::from_utf8_lossy(&output.stderr)
     );
+
+    Ok(())
 }
 
 /// Tests that get_files correctly returns matching files for valid patterns.
@@ -71,17 +70,19 @@ fn test_ffmpeg_exists() {
 /// glob pattern matching works correctly. This test ensures the file
 /// discovery functionality works as expected in normal conditions.
 #[test]
-fn test_get_files_matches() {
+fn test_get_files_matches() -> Result<()> {
     // Setup a temporary folder and file
-    let tmp_dir = tempdir().expect("Failed to create temporary directory");
+    let tmp_dir = tempdir()?;
     let file_path = tmp_dir.path().join("testfile.txt");
-    File::create(&file_path).expect("Failed to create test file");
+    File::create(&file_path)?;
 
     let path = tmp_dir.path().join("testfile.*");
     let paths = get_files(path).unwrap_or_else(|e| panic!("Failed to get files: {e:?}"));
 
     assert_eq!(paths.len(), 1);
-    assert_eq!(paths[0], file_path);
+    assert_eq!(paths[0].as_ref(), file_path);
+
+    Ok(())
 }
 
 /// Tests remove_files function handles missing files gracefully.
@@ -90,10 +91,10 @@ fn test_get_files_matches() {
 /// errors rather than panicking. This ensures robust error handling in
 /// cleanup operations.
 #[test]
-fn test_remove_files_handles_errors() {
-    let tmp_dir = tempdir().expect("Failed to create temporary directory");
+fn test_remove_files_handles_errors() -> Result<()> {
+    let tmp_dir = tempdir()?;
     let file_path = tmp_dir.path().join("removable.txt");
-    File::create(&file_path).expect("Failed to create a file");
+    File::create(&file_path)?;
 
     let paths = vec![file_path.clone()];
     let result = remove_files(&paths);
@@ -106,6 +107,8 @@ fn test_remove_files_handles_errors() {
     let result = remove_files(&paths);
 
     assert!(result.is_err());
+
+    Ok(())
 }
 
 /// Tests basic PNG image creation functionality.
@@ -114,8 +117,8 @@ fn test_remove_files_handles_errors() {
 /// This test covers the core image saving functionality used throughout
 /// the application for frame extraction.
 #[test]
-fn test_save_rgb_to_image_saves_png() {
-    let tmp_dir = tempdir().expect("Failed to create temporary directory");
+fn test_save_rgb_to_image_saves_png() -> Result<()> {
+    let tmp_dir = tempdir()?;
     let img_path = tmp_dir.path().join("output.png");
 
     // Create a small 2x2 red image
@@ -128,6 +131,8 @@ fn test_save_rgb_to_image_saves_png() {
     assert!(result.is_ok());
 
     assert!(img_path.exists());
+
+    Ok(())
 }
 
 /// Tests that get_files returns an empty vector for patterns matching no files.
@@ -136,15 +141,14 @@ fn test_save_rgb_to_image_saves_png() {
 /// verifying that the function correctly returns Ok(vec![]) rather than an
 /// error. This ensures graceful handling of non-matching patterns.
 #[test]
-fn test_get_files_empty_pattern() {
-    let tmp_dir = tempdir().expect("Failed to create temporary directory");
+fn test_get_files_empty_pattern() -> Result<()> {
+    let tmp_dir = tempdir()?;
     let path = tmp_dir.path().join("doesnotexist.*");
-    let result = get_files(path);
-    assert!(result.is_ok());
-
-    let paths = result.unwrap();
+    let paths = get_files(path)?;
 
     assert!(paths.is_empty());
+
+    Ok(())
 }
 
 /// Tests that get_files properly handles invalid glob patterns.
@@ -153,10 +157,12 @@ fn test_get_files_empty_pattern() {
 /// an error rather than panicking. This ensures robust error handling for
 /// user-provided patterns.
 #[test]
-fn test_get_files_invalid_pattern_returns_err() {
+fn test_get_files_invalid_pattern_returns_err() -> Result<()> {
     // Test that an invalid glob pattern results in an error.
     let result = get_files("[invalid[pattern");
     assert!(result.is_err());
+
+    Ok(())
 }
 
 /// Tests that remove_files handles empty input gracefully.
@@ -165,10 +171,12 @@ fn test_get_files_invalid_pattern_returns_err() {
 /// without attempting any filesystem operations. This confirms the function
 /// handles edge cases properly.
 #[test]
-fn test_remove_files_with_empty_list() {
+fn test_remove_files_with_empty_list() -> Result<()> {
     let paths: Vec<PathBuf> = vec![];
     let result = remove_files(&paths);
     assert!(result.is_ok());
+
+    Ok(())
 }
 
 /// Tests that remove_files returns error when some files are missing.
@@ -178,10 +186,10 @@ fn test_remove_files_with_empty_list() {
 /// for the missing ones. This ensures proper error reporting in mixed
 /// scenarios.
 #[test]
-fn test_remove_files_with_existing_and_missing_files() {
-    let tmp_dir = tempdir().expect("Failed to create temporary directory");
+fn test_remove_files_with_existing_and_missing_files() -> Result<()> {
+    let tmp_dir = tempdir()?;
     let file_path = tmp_dir.path().join("file.txt");
-    File::create(&file_path).expect("Failed to create a file");
+    File::create(&file_path)?;
 
     let missing_file = tmp_dir.path().join("missing.txt");
     let paths = vec![file_path.clone(), missing_file.clone()];
@@ -191,6 +199,8 @@ fn test_remove_files_with_existing_and_missing_files() {
     assert!(result.is_err());
     // The file that did exist should still have been removed.
     assert!(!file_path.exists());
+
+    Ok(())
 }
 
 /// Tests error handling for invalid pixel data.
@@ -199,8 +209,8 @@ fn test_remove_files_with_existing_and_missing_files() {
 /// that the image creation handles malformed input gracefully without
 /// panicking or corrupting memory.
 #[test]
-fn test_save_rgb_to_image_invalid_data() {
-    let tmp_dir = tempdir().expect("Failed to create temporary directory");
+fn test_save_rgb_to_image_invalid_data() -> Result<()> {
+    let tmp_dir = tempdir()?;
     let img_path = tmp_dir.path().join("bad.png");
 
     // Provide fewer bytes than needed for a 2x2 image
@@ -208,6 +218,8 @@ fn test_save_rgb_to_image_invalid_data() {
     let result = save_rgb_to_image(&bad_pixels, 2, 2, &img_path);
 
     assert!(result.is_err());
+
+    Ok(())
 }
 
 /// Tests that save_rgb_to_image can successfully overwrite existing files.
@@ -216,8 +228,8 @@ fn test_save_rgb_to_image_invalid_data() {
 /// verifying that the operation succeeds and the file gets updated.
 /// This confirms that file overwriting works as expected.
 #[test]
-fn test_save_rgb_to_image_overwrite() {
-    let tmp_dir = tempdir().expect("Failed to create temporary directory");
+fn test_save_rgb_to_image_overwrite() -> Result<()> {
+    let tmp_dir = tempdir()?;
     let img_path = tmp_dir.path().join("overwrite.png");
 
     let width = 1;
@@ -236,6 +248,8 @@ fn test_save_rgb_to_image_overwrite() {
     assert!(result.is_ok());
 
     assert!(img_path.exists());
+
+    Ok(())
 }
 
 /// Tests that remove_folder successfully removes empty directories.
@@ -244,14 +258,16 @@ fn test_save_rgb_to_image_overwrite() {
 /// can remove it without errors. This test ensures the directory
 /// cleanup functionality works correctly for empty folders.
 #[test]
-fn test_remove_folder_on_empty_dir() {
-    let tmp_dir = tempdir().expect("Failed to create temporary directory");
+fn test_remove_folder_on_empty_dir() -> Result<()> {
+    let tmp_dir = tempdir()?;
     let folder = tmp_dir.path().join("toremove");
-    create_dir_all(&folder).expect("Failed to read folder");
+    create_dir_all(&folder)?;
 
-    remove_folder(folder.as_path()).expect("Failed to remove folder");
+    remove_folder(folder.as_path())?;
 
     assert!(!folder.exists());
+
+    Ok(())
 }
 
 /// Tests that cleanup function handles empty or non-existent directories
@@ -262,9 +278,11 @@ fn test_remove_folder_on_empty_dir() {
 /// ensures the cleanup process is robust during initial runs or after manual
 /// cleanup.
 #[test]
-fn test_cleanup_on_empty_dirs() {
+fn test_cleanup_on_empty_dirs() -> Result<()> {
     // Should not panic if frames/ and segments/ do not exist or are empty
-    cleanup_temporary_files();
+    cleanup_temporary_files()?;
+
+    Ok(())
 }
 
 /// Tests that the segmentation process creates segment files as expected.
@@ -275,43 +293,44 @@ fn test_cleanup_on_empty_dirs() {
 /// segmentation logic works end-to-end and that output files are actually
 /// produced on disk.
 #[test]
-fn test_split_into_segments_creates_segments() {
-    let tmp_dir = tempdir().expect("Failed to create temporary directory");
+fn test_split_into_segments_creates_segments() -> Result<()> {
+    let tmp_dir = tempdir()?;
+
     let video_path = tmp_dir.path().join("input.mp4");
     let segments_dir = tmp_dir.path().join("segments");
+    create_dir_all(&segments_dir)?;
 
-    create_dir_all(&segments_dir).expect("Failed to read segments_dir");
-    create_dummy_video(&video_path);
+    let video_path = create_dummy_video(video_path)?;
 
     let segment_output_pattern = segments_dir.join("output_%09d.mp4");
     let segmented_files_path = segments_dir.join("*.mp4");
 
-    let result = segment_output_pattern.to_str().ok_or_else(|| {
+    let segment_output_pattern = segment_output_pattern.to_str().ok_or_else(|| {
         anyhow::anyhow!(
             "Invalid UTF-8 path for glob pattern: {}",
             segment_output_pattern.display()
         )
-    });
-    assert!(result.is_ok());
-
-    let segment_output_pattern = result.unwrap();
+    })?;
 
     // Ensure empty before run
-    let paths = get_files(segmented_files_path.clone()).expect("Failed to get files");
+    let paths = get_files(segmented_files_path.clone())?;
     let result = remove_files(&paths);
     assert!(result.is_ok());
 
     // Call the function
-    let result = split_into_segments(&video_path, segment_output_pattern, segmented_files_path);
+    let result = split_into_segments(video_path, segment_output_pattern, segmented_files_path);
     assert!(result.is_ok());
 
     let segments = result.unwrap();
 
     // Should produce at least one segment file
     assert!(!segments.is_empty(), "Should create at least one segment");
-    for seg in &segments {
-        assert!(seg.exists(), "Segment file should exist: {:?}", seg);
+    for seg in segments {
+        let seg = seg.as_ref();
+        assert!(seg.exists(), "Segment file should exist: {seg:?}");
     }
+
+    Ok(())
 }
 
 /// Tests that split_into_segments gracefully handles a nonexistent input file.
@@ -320,7 +339,7 @@ fn test_split_into_segments_creates_segments() {
 /// function returns an error. This ensures proper error handling for missing
 /// or invalid input paths.
 #[test]
-fn test_split_into_segments_handles_nonexistent_file() {
+fn test_split_into_segments_handles_nonexistent_file() -> Result<()> {
     let nonexistent = PathBuf::from("this_file_does_not_exist.mp4");
     let dummy_segment_output_pattern = "test-segments/output_%09d.mp4";
     let dummy_segmented_files_pattern = "test-segments/*.mp4";
@@ -331,6 +350,8 @@ fn test_split_into_segments_handles_nonexistent_file() {
         dummy_segmented_files_pattern,
     );
     assert!(result.is_err(), "Should return an error on a nonexistent input file");
+
+    Ok(())
 }
 
 /// Tests that video segmentation creates actual segment files.
@@ -340,25 +361,27 @@ fn test_split_into_segments_handles_nonexistent_file() {
 /// MP4 segment files. This is a key integration test for the core video
 /// processing functionality.
 #[test]
-fn test_decode_frames_dropping_creates_expected_frames() {
-    let prefix = "test";
-    let tmp_dir = tempdir().expect("Failed to create temporary directory");
+fn test_decode_frames_dropping_creates_expected_frames() -> Result<()> {
+    let tmp_dir = tempdir()?;
+
     let video_path = tmp_dir.path().join("input.mp4");
     let frames_dir = tmp_dir.path().join("frames");
 
-    create_dummy_video(&video_path);
-    create_dir_all(&frames_dir).expect("Failed to create frames_dir");
+    let video_path = create_dummy_video(video_path)?;
+    create_dir_all(&frames_dir)?;
 
-    let result = decode_frames_dropping(prefix, &video_path, &frames_dir);
-    assert!(result.is_ok());
+    let prefix = "test";
+    decode_frames_dropping(prefix, video_path, &frames_dir)?;
 
-    let frames = read_dir(frames_dir).expect("Failed to read frames_dir");
+    let frames = read_dir(frames_dir).context("Failed to read frames_dir")?;
     let png_files: Vec<_> = frames
         .filter_map(|e| e.ok())
         .filter(|e| e.path().extension().map_or(false, |ext| ext == "png"))
         .collect();
 
     assert!(!png_files.is_empty(), "No PNG frames were created");
+
+    Ok(())
 }
 
 /// Tests error handling for mismatched dimensions.
@@ -367,12 +390,15 @@ fn test_decode_frames_dropping_creates_expected_frames() {
 /// dimensions (width * height) do not match the length of the pixel buffer.
 /// This ensures the function validates input dimensions against buffer size.
 #[test]
-fn test_save_rgb_to_image_invalid_dimensions() {
-    let tmp_dir = tempdir().expect("Failed to create temporary directory");
+fn test_save_rgb_to_image_invalid_dimensions() -> Result<()> {
+    let tmp_dir = tempdir()?;
+
     let img_path = tmp_dir.path().join("invalid.png");
     let raw_pixels = vec![255u8; 12]; // valid for 2x2 image
     let result = save_rgb_to_image(&raw_pixels, 3, 2, &img_path); // invalid dimensions
     assert!(result.is_err());
+
+    Ok(())
 }
 
 /// Tests that `split_into_segments` returns an error for invalid ffmpeg output
@@ -383,15 +409,20 @@ fn test_save_rgb_to_image_invalid_dimensions() {
 /// function correctly captures the ffmpeg error and returns a `Result::Err`,
 /// ensuring robust error handling for invalid ffmpeg arguments.
 #[test]
-fn test_split_into_segments_invalid_output_pattern() {
-    let tmp_dir = tempdir().expect("Failed to create temporary directory");
+fn test_split_into_segments_invalid_output_pattern() -> Result<()> {
+    let tmp_dir = tempdir()?;
+
     let video_path = tmp_dir.path().join("input.mp4");
-    create_dummy_video(&video_path);
+    create_dummy_video(&video_path)?;
+
     let segments_dir = tmp_dir.path().join("segments");
-    create_dir_all(&segments_dir).expect("Failed to create segments directory");
+    create_dir_all(&segments_dir)?;
+
     let invalid_pattern = "invalid_pattern"; // not a valid ffmpeg output pattern
     let result = split_into_segments(&video_path, invalid_pattern, "segments/*.mp4");
     assert!(result.is_err());
+
+    Ok(())
 }
 
 /// Tests error handling for `decode_frames_seeking` with a nonexistent video
@@ -401,10 +432,12 @@ fn test_split_into_segments_invalid_output_pattern() {
 /// path does not exist. This ensures the function gracefully handles invalid
 /// file paths instead of panicking.
 #[test]
-fn test_decode_frames_seeking_invalid_video_path() {
+fn test_decode_frames_seeking_invalid_video_path() -> Result<()> {
     let nonexistent = PathBuf::from("nonexistent.mp4");
     let result = decode_frames_seeking(&nonexistent);
     assert!(result.is_err());
+
+    Ok(())
 }
 
 /// Tests error handling for `decode_frames_dropping` with a nonexistent output
@@ -414,13 +447,17 @@ fn test_decode_frames_seeking_invalid_video_path() {
 /// output directory for frames does not exist. This ensures the function
 /// performs necessary pre-checks on output paths.
 #[test]
-fn test_decode_frames_dropping_invalid_frames_path() {
-    let tmp_dir = tempdir().expect("Failed to create temporary directory");
+fn test_decode_frames_dropping_invalid_frames_path() -> Result<()> {
+    let tmp_dir = tempdir()?;
+
     let video_path = tmp_dir.path().join("input.mp4");
-    create_dummy_video(&video_path);
+    create_dummy_video(&video_path)?;
+
     let frames_path = tmp_dir.path().join("nonexistent");
     let result = decode_frames_dropping("test", &video_path, &frames_path);
     assert!(result.is_err());
+
+    Ok(())
 }
 
 /// Tests error handling for `decode_frames_dropping` with a nonexistent video
@@ -430,11 +467,15 @@ fn test_decode_frames_dropping_invalid_frames_path() {
 /// path does not exist. This ensures the function gracefully handles invalid
 /// file paths instead of panicking.
 #[test]
-fn test_decode_frames_dropping_invalid_video_path() {
-    let tmp_dir = tempdir().expect("Failed to create temporary directory");
+fn test_decode_frames_dropping_invalid_video_path() -> Result<()> {
+    let tmp_dir = tempdir()?;
+
     let video_path = tmp_dir.path().join("nonexistent.mp4");
     let frames_path = tmp_dir.path().join("frames");
-    create_dir_all(&frames_path).expect("Failed to create frames directory");
+    create_dir_all(&frames_path)?;
+
     let result = decode_frames_dropping("test", &video_path, &frames_path);
     assert!(result.is_err());
+
+    Ok(())
 }
