@@ -1,7 +1,7 @@
 # Extract frames
 
-[![unit tests](https://github.com/egorsmkv/extract-frames-rs/actions/workflows/test.yaml/badge.svg)](https://github.com/egorsmkv/extract-frames-rs/actions/workflows/test.yaml)
-[![security audit](https://github.com/egorsmkv/extract-frames-rs/actions/workflows/audit.yaml/badge.svg)](https://github.com/egorsmkv/extract-frames-rs/actions/workflows/audit.yaml)
+[![unit tests](https://github.com/RustedBytes/extract-frames/actions/workflows/test.yaml/badge.svg)](https://github.com/RustedBytes/extract-frames/actions/workflows/test.yaml)
+[![security audit](https://github.com/RustedBytes/extract-frames/actions/workflows/audit.yaml/badge.svg)](https://github.com/RustedBytes/extract-frames/actions/workflows/audit.yaml)
 
 A Rust-based command-line application for extracting frames from video files
 using FFmpeg, supporting both sequential and parallel processing modes.
@@ -107,5 +107,5 @@ of changes and ensure that all tests pass before submitting.
 * If you experience errors during parallel processing, verify that your system
   has sufficient resources (CPU cores and memory).
 * For other issues, please check the [issues
-  page](https://github.com/egorsmkv/extract-frames-rs/issues) or submit a new
+  page](https://github.com/RustedBytes/extract-frames/issues) or submit a new
   issue with detailed information about your problem.

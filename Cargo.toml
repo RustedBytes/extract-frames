@@ -8,7 +8,7 @@ authors = [
 ]
 keywords = ["ffmpeg", "video"]
 categories = ["command-line-utilities"]
-repository = "https://github.com/egorsmkv/extract-frames-rs"
+repository = "https://github.com/RustedBytes/extract-frames"
 license = "MIT"
 readme = "README.md"
 
