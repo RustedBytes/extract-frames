@@ -78,7 +78,7 @@ To contribute to this project, you'll need:
 3. `carcargo install --git https://github.com/RustedBytes/invoke-llm`
 4. `cargo install --git https://github.com/ytmimi/markdown-fmt markdown-fmt
    --features="build-binary"`
-5. `brew install lefthook` (for pre-commit hooks)
+5. [lefthook](https://github.com/evilmartians/lefthook) (for pre-commit hooks)
 6. [yamlfmt](https://github.com/google/yamlfmt) (for YAML formatting)
 
 ## Building and Testing
