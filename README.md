@@ -1,7 +1,6 @@
 # Extract frames
 
-[![unit tests](https://github.com/RustedBytes/extract-frames/actions/workflows/test.yaml/badge.svg)](https://github.com/RustedBytes/extract-frames/actions/workflows/test.yaml)
-[![security audit](https://github.com/RustedBytes/extract-frames/actions/workflows/audit.yaml/badge.svg)](https://github.com/RustedBytes/extract-frames/actions/workflows/audit.yaml)
+[![badges](https://img.shields.io/badge/open-all_badges-green)](./BADGES.md)
 
 A Rust-based command-line application for extracting frames from video files
 using FFmpeg, supporting both sequential and parallel processing modes.
