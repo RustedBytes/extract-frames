@@ -31,7 +31,7 @@ doc:
     cargo doc --open
 
 release: check
-    cargo build --release
+    cargo +stable build --release
 
 download_test_video:
     wget -O "video.mp4" "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4"
