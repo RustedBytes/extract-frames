@@ -36,3 +36,7 @@ qwen3_coder_non_idiomatic: gen_ctx
 maverick_create_topics:
     dircat -b -e rs -e MD -o ctx.md .
     invoke-llm -e hf -m "meta-llama/Llama-4-Maverick-17B-128E-Instruct:cerebras" -t 2000 -p .llms/prompts/create_topics.md -i ctx.md -o .llms/maverick_create_topics.md
+
+maverick_license_analysis:
+    cargo license > ctx.md
+    invoke-llm -e hf -m "meta-llama/Llama-4-Maverick-17B-128E-Instruct:cerebras" -t 2000 -p .llms/prompts/license_analysis.md -i ctx.md -o .llms/maverick_license_analysis.md
