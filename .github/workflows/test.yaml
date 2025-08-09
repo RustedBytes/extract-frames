@@ -16,6 +16,8 @@ jobs:
         with:
           tools: libavcodec-dev libavformat-dev libswscale-dev libavfilter-dev libavdevice-dev libavutil-dev
           method: timestamp
+      - name: Install NASM
+        uses: ilammy/setup-nasm@v1
       - name: Setup FFmpeg
         uses: AnimMouse/setup-ffmpeg@v1
         with:
