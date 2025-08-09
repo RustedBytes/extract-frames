@@ -414,6 +414,7 @@ dependencies = [
  "anyhow",
  "clap",
  "ffmpeg-next",
+ "ffmpeg-sys-next",
  "glob",
  "image",
  "log",
