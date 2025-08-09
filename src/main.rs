@@ -1,13 +1,17 @@
 #[cfg(test)]
 mod tests;
 
+use ffmpeg_next::format::{Pixel, input};
+use ffmpeg_next::media::Type;
+use ffmpeg_next::software::scaling::{context::Context as ScalingContext, flag::Flags};
+use ffmpeg_next::util::frame::video::Video;
+use num_traits::cast;
 use {
     anyhow::{Context, Error, Result, anyhow, bail},
     clap::Parser,
     glob::glob,
     image::RgbImage,
     log::{debug, error, info},
-    num_traits::cast,
     rayon::prelude::*,
     std::{
         env,
@@ -350,10 +354,9 @@ fn decode_frames_dropping(
 
 /// Decodes one frame per second by seeking to specific timestamps.
 ///
-/// This experimental function uses precise seeking to extract exactly one
+/// This function uses precise seeking to extract exactly one
 /// frame per second of video. It's more accurate for consistent temporal
-/// sampling but significantly slower due to seek overhead. Uses rayon for
-/// parallel PNG saving to improve performance.
+/// sampling but significantly slower due to seek overhead.
 ///
 /// # Approach
 /// 1. Calculate video duration and determine target timestamps (1s, 2s, 3s,
@@ -365,78 +368,82 @@ fn decode_frames_dropping(
 /// * Seek accuracy depends on video keyframe spacing
 /// * May skip frames in areas with sparse keyframes
 /// * Higher CPU usage due to seeking overhead
-fn decode_frames_seeking(video_path: impl AsRef<Path>) -> Result<()> {
-    let start = Instant::now();
-    let video_path = video_path.as_ref();
+fn decode_frames_seeking(
+    frame_prefix: &str,
+    video_path: impl AsRef<Path>,
+    frames_path: impl AsRef<Path>,
+) -> Result<()> {
+    let mut ictx = input(&video_path)?;
 
-    let mut decoder = Decoder::new(video_path).context("failed to create decoder")?;
+    let input_stream = ictx
+        .streams()
+        .best(Type::Video)
+        .ok_or(ffmpeg_next::Error::StreamNotFound)?;
+    let video_stream_index = input_stream.index();
 
-    let fps = f64::from(decoder.frame_rate());
-    let duration_time = decoder.duration().expect("failed to get duration");
-    let duration_seconds = duration_time.as_secs_f64();
-    let (width, height) = decoder.size();
+    let duration: f64 = cast(ictx.duration()).ok_or(ffmpeg_next::Error::from(ffmpeg_next::ffi::EINVAL))?;
+    let duration_secs = if ictx.duration() == ffmpeg_next::ffi::AV_NOPTS_VALUE {
+        0.0
+    } else {
+        duration / f64::from(ffmpeg_next::ffi::AV_TIME_BASE)
+    };
+
+    let duration_sec_int: i64 = cast(duration_secs).ok_or(ffmpeg_next::Error::from(ffmpeg_next::ffi::EINVAL))?;
+    let fps = input_stream.rate().numerator();
+
+    let context_decoder = ffmpeg_next::codec::context::Context::from_parameters(input_stream.parameters())?;
+    let mut video_decoder = context_decoder.decoder().video()?;
+
+    let width = video_decoder.width();
+    let height = video_decoder.height();
+    let frames_path = frames_path.as_ref();
 
     debug!("Width: {width}, height: {height}");
+    debug!("Total duration: {duration_secs:.2} seconds");
+    debug!("FPS: {fps}");
 
-    if duration_seconds < 0.0 {
-        let n_frames = decoder.frames().expect("failed to get number of frames");
-        let frame_count = cast(n_frames).unwrap_or(0);
-        let duration_seconds = if fps > 0.0 { f64::from(frame_count) / fps } else { 0.0 };
+    let mut scaler = ScalingContext::get(
+        video_decoder.format(),
+        width,
+        height,
+        Pixel::RGB24,
+        width,
+        height,
+        Flags::BILINEAR,
+    )?;
 
-        info!("Frame count: {frame_count}");
-        info!("Estimated duration (from frames): {duration_seconds} seconds");
-    } else {
-        info!("Duration: {duration_seconds} seconds");
-    }
+    let receive_and_process_frame =
+        |decoder: &mut ffmpeg_next::decoder::Video, scaler: &mut ScalingContext, n: i64| -> Result<(), Error> {
+            let mut decoded = Video::empty();
+            if decoder.receive_frame(&mut decoded).is_ok() {
+                let mut rgb_frame = Video::empty();
+                scaler.run(&decoded, &mut rgb_frame)?;
 
-    info!("FPS: {fps}");
+                let path = frames_path.join(format!("{frame_prefix}_{n}.png"));
 
-    let mut frames_decoded = Vec::new();
+                save_rgb_to_image(rgb_frame.data(0), width, height, &path)
+            } else {
+                // This can happen if the packet didn't contain a full frame
+                Err(Error::from(ffmpeg_next::Error::from(ffmpeg_next::ffi::EAGAIN)))
+            }
+        };
 
-    let duration_in_seconds = cast(duration_seconds.ceil()).unwrap_or(0);
-    let fps_c = cast(fps.ceil()).unwrap_or(0);
+    let tb = i64::from(ffmpeg_next::ffi::AV_TIME_BASE);
+    for n in 0..duration_sec_int as i64 {
+        let seek_target = n * tb;
 
-    for second in 0..duration_in_seconds {
-        let frame_number = second * fps_c;
+        ictx.seek(seek_target, ..seek_target)?;
 
-        match decoder.seek_to_frame(frame_number) {
-            Ok(()) => {
-                debug!("Successfully sought to frame near index {frame_number}.");
-
-                match decoder.decode() {
-                    Ok((ts, frame)) => {
-                        let frame_time = ts.as_secs_f64();
-                        debug!("Frame time: {frame_time}");
-
-                        if let Some(rgb) = frame.as_slice() {
-                            frames_decoded.push(rgb.to_vec());
-                        } else {
-                            error!("Failed to get frame buffer as slice for frame");
-                        }
-                    },
-                    Err(e) => {
-                        error!("Error decoding frame: {e}");
-                    },
+        for (stream, packet) in ictx.packets() {
+            if stream.index() == video_stream_index {
+                video_decoder.send_packet(&packet)?;
+                if receive_and_process_frame(&mut video_decoder, &mut scaler, n).is_ok() {
+                    // Frame found and saved, break to the next second
+                    break;
                 }
-            },
-            Err(e) => {
-                error!("Error seeking to frame: {e}");
-            },
+            }
         }
     }
-
-    info!("Elapsed: {:.2?}", start.elapsed());
-    info!("Frames decoded: {}", frames_decoded.len());
-
-    let start = Instant::now();
-    frames_decoded.par_iter().enumerate().for_each(|(n, rgb)| {
-        let path = PathBuf::from(format!("frames/{n}.png"));
-
-        if let Err(e) = save_rgb_to_image(rgb, width, height, path.as_path()) {
-            error!("Error saving image {n}: {e:?}");
-        }
-    });
-    info!("Elapsed saving: {:.2?}", start.elapsed());
 
     Ok(())
 }
@@ -513,11 +520,10 @@ fn save_rgb_to_image(raw_pixels: &[u8], width: u32, height: u32, path: impl AsRe
 /// # Parallel processing for large videos
 /// cargo run -- --file input.mp4 --multicore
 /// ```
-fn main() -> Result<(), anyhow::Error> {
+fn main() -> Result<(), Error> {
     let args = Args::parse();
 
     tracing_subscriber::fmt::init();
-    video_rs::init().expect("video-rs failed to initialize");
 
     create_dir_all("frames").context("failed to create frames directory")?;
     create_dir_all("segments").context("failed to create segments directory")?;
@@ -528,6 +534,8 @@ fn main() -> Result<(), anyhow::Error> {
     let frames_path = path.join("frames");
 
     if args.multicore {
+        video_rs::init().expect("video-rs failed to initialize");
+
         let segments = split_into_segments(&args.file, SEGMENT_OUTPUT_PATTERN, SEGMENTED_FILES_PATTERN)?;
 
         info!("Segments: {}", segments.len());
@@ -543,9 +551,9 @@ fn main() -> Result<(), anyhow::Error> {
 
         info!("Elapsed total: {:.2?}", start.elapsed());
     } else if args.use_seek {
-        // FIXME: The seek-based method is experimental and may not produce correct
-        // output.
-        decode_frames_seeking(&args.file)?;
+        ffmpeg_next::init().expect("ffmpeg-next failed to initialize");
+
+        decode_frames_seeking("full", &args.file, &frames_path)?;
     } else {
         decode_frames_dropping("full", &args.file, &frames_path)?;
     }

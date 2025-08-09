@@ -434,7 +434,8 @@ fn test_split_into_segments_invalid_output_pattern() -> Result<()> {
 #[test]
 fn test_decode_frames_seeking_invalid_video_path() -> Result<()> {
     let nonexistent = PathBuf::from("nonexistent.mp4");
-    let result = decode_frames_seeking(&nonexistent);
+    let nonexistent2 = PathBuf::from("nonexistent-folder");
+    let result = decode_frames_seeking("test", &nonexistent, &nonexistent2);
     assert!(result.is_err());
 
     Ok(())
