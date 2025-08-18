@@ -22,7 +22,7 @@ image = { version = "0.25", features = ["jpeg"] }
 log = "0.4.27"
 ndarray = "0.16.1"
 num-traits = "0.2.19"
-rayon = "1.10.0"
+rayon = "1.11.0"
 tracing = "0.1.41"
 tracing-subscriber = "0.3.19"
 video-rs = { version = "0.10.3", features = ["ndarray"] }
