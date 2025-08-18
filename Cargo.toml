@@ -13,7 +13,7 @@ license = "MIT"
 readme = "README.md"
 
 [dependencies]
-anyhow = "1.0.98"
+anyhow = "1.0.99"
 clap = { version = "4.5.43", features = ["derive"] }
 glob = "0.3.3"
 ffmpeg-next = { version = "7.1.0", features = ["static", "build"] }
