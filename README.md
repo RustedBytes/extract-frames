@@ -74,18 +74,13 @@ cargo run -- --file input.mp4 --multicore
 To contribute to this project, you'll need:
 
 1. Rust toolchain (nightly version recommended)
-2. `cargo install action-validator dircat just`
-3. `carcargo install --git https://github.com/RustedBytes/invoke-llm`
-4. `cargo install --git https://github.com/ytmimi/markdown-fmt markdown-fmt
-   --features="build-binary"`
-5. [lefthook](https://github.com/evilmartians/lefthook) (for pre-commit hooks)
-6. [yamlfmt](https://github.com/google/yamlfmt) (for YAML formatting)
+2. `just init-macos` or `just init-linux`
 
 ## Building and Testing
 
 1. Clone the repository
-2. Run `cargo build` to compile the application
-3. Run `cargo test` to execute the test suite
+2. Run `just build` to compile the application
+3. Run `just test` to execute the test suite
 4. Run `cargo run -- --help` to see command-line options
 
 ## Known Limitations

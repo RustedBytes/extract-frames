@@ -23,7 +23,7 @@ jobs:
       - name: Setup FFmpeg
         uses: AnimMouse/setup-ffmpeg@v1
         with:
-          version: master
+          version: 7.1
       - name: Checkout code
         uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master

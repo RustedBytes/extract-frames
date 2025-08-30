@@ -1,24 +1,44 @@
 set dotenv-load := true
 
-init:
-    cargo install action-validator dircat just
+dev-deps:
+    cargo install cargo-audit action-validator dircat
+    cargo install --git https://github.com/ytmimi/markdown-fmt markdown-fmt --features="build-binary"
+    cargo install --git https://github.com/RustedBytes/invoke-llm
+
+init-macos: dev-deps
     brew install lefthook
+
+init-linux: dev-deps
+    go install github.com/evilmartians/lefthook@latest
+    go install github.com/google/yamlfmt/cmd/yamlfmt@latest
+
+check-dev:
+    lefthook version
+    action-validator --version
+    dircat --version
+    cargo audit --version
+    yamlfmt --version
+    markdown-fmt --version
+    cargo --version
+    rustc --version
+    git --version
+    yasm --version
 
 check: fmt
     cargo +nightly clippy -- -W clippy::pedantic
 
-check_fmt:
+check-fmt:
     cargo +nightly fmt -- --check
 
-yaml_fmt:
+yaml-fmt:
     yamlfmt lefthook.yml
     yamlfmt -dstar .github/**/*.{yaml,yml}
 
-md_fmt:
+md-fmt:
     markdown-fmt -m 80 CONTRIBUTING.md
     markdown-fmt -m 80 README.md
 
-fmt: yaml_fmt md_fmt
+fmt: yaml-fmt md-fmt
     cargo +nightly fmt
 
 test:
@@ -30,8 +50,11 @@ audit:
 doc:
     cargo doc --open
 
+build: check
+    cargo +stable build
+
 release: check
     cargo +stable build --release
 
-download_test_video:
+download-test-video:
     wget -O "video.mp4" "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4"
