@@ -19,9 +19,7 @@ using FFmpeg, supporting both sequential and parallel processing modes.
 
 ## Features
 
-* Extract frames at specified intervals or one frame per second
 * Support for parallel processing using multiple CPU cores
-* Experimental seek-based extraction method for consistent temporal sampling
 * Robust error handling for file operations and FFmpeg interactions
 * Comprehensive test suite for core functionality
 
@@ -42,7 +40,7 @@ The extracted frames will be saved as PNG files in the `frames` directory.
 
 ### Extract One Frame Per Second
 
-To extract one frame per second using the experimental seek-based method:
+To extract one frame per second using the seek-based method:
 
 ```bash
 cargo run -- --file input.mp4 --use-seek
@@ -60,8 +58,7 @@ cargo run -- --file input.mp4 --multicore
 ## Command Line Arguments
 
 * `--file <PATH>`: Specify input video file (default: "video.mp4")
-* `--use-seek`: Enable experimental seek-based frame extraction (one frame per
-  second)
+* `--use-seek`: Enable seek-based frame extraction (one frame per second)
 * `--multicore`: Enable parallel processing using multiple CPU cores
 
 ## Requirements
@@ -82,12 +79,6 @@ To contribute to this project, you'll need:
 2. Run `just build` to compile the application
 3. Run `just test` to execute the test suite
 4. Run `cargo run -- --help` to see command-line options
-
-## Known Limitations
-
-* The seek-based method is experimental and may not produce accurate results due
-  to keyframe spacing issues
-* Parallel processing requires FFmpeg to be installed and available in PATH
 
 ## Contributing
 
