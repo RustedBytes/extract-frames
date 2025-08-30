@@ -13,7 +13,6 @@ using FFmpeg, supporting both sequential and parallel processing modes.
 * [Requirements](#requirements)
 * [Development](#development)
 * [Building and Testing](#building-and-testing)
-* [Known Limitations](#known-limitations)
 * [Contributing](#contributing)
 * [Troubleshooting](#troubleshooting)
 
