@@ -79,6 +79,14 @@ To contribute to this project, you'll need:
 3. Run `just test` to execute the test suite
 4. Run `cargo run -- --help` to see command-line options
 
+### Building on Ubuntu
+
+You need to install these packages:
+
+```shell
+sudo apt install libavcodec-dev libavformat-dev libswscale-dev libavfilter-dev libavdevice-dev libavutil-dev yasm
+```
+
 ## Contributing
 
 Contributions are welcome! Please submit pull requests with clear descriptions
