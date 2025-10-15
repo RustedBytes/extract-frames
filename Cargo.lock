@@ -411,7 +411,7 @@ dependencies = [
  "glob",
  "image",
  "log",
- "ndarray",
+ "ndarray 0.17.0",
  "num-traits",
  "rayon",
  "tempfile",
@@ -890,6 +890,21 @@ name = "ndarray"
 version = "0.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "882ed72dce9365842bf196bdeedf5055305f11fc8c03dee7bb0194a6cad34841"
+dependencies = [
+ "matrixmultiply",
+ "num-complex",
+ "num-integer",
+ "num-traits",
+ "portable-atomic",
+ "portable-atomic-util",
+ "rawpointer",
+]
+
+[[package]]
+name = "ndarray"
+version = "0.17.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "132ea8ac1939bcf6c6e291dbf904dd19b998e2cfa7b9ac3bc7ab2e8577207a3f"
 dependencies = [
  "matrixmultiply",
  "num-complex",
@@ -1656,7 +1671,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "859aad7261bac267f90f9635ec9addba3b4bcb4bbb2edb03fec3e6b765657bee"
 dependencies = [
  "ffmpeg-next",
- "ndarray",
+ "ndarray 0.16.1",
  "tracing",
  "url",
 ]
