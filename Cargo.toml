@@ -14,7 +14,7 @@ readme = "README.md"
 
 [dependencies]
 anyhow = "1.0.100"
-clap = { version = "4.5.48", features = ["derive"] }
+clap = { version = "4.5.51", features = ["derive"] }
 glob = "0.3.3"
 ffmpeg-next = { version = "^7.1", features = ["static", "build"] }
 image = { version = "0.25", features = ["jpeg"] }
