@@ -13,7 +13,7 @@ jobs:
         run: |
           cargo install cargo-edit
           cargo update
-          cargo upgrade --incompatible
+          cargo upgrade
         shell: bash
       - name: Create PR
         id: create-pr
