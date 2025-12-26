@@ -371,7 +371,7 @@ fn test_decode_frames_dropping_creates_expected_frames() -> Result<()> {
     create_dir_all(&frames_dir)?;
 
     let prefix = "test";
-    decode_frames_dropping(prefix, video_path, &frames_dir)?;
+    decode_frames_dropping(prefix, video_path, &frames_dir, 30)?;
 
     let frames = read_dir(frames_dir).context("Failed to read frames_dir")?;
     let png_files: Vec<_> = frames
@@ -455,7 +455,7 @@ fn test_decode_frames_dropping_invalid_frames_path() -> Result<()> {
     create_dummy_video(&video_path)?;
 
     let frames_path = tmp_dir.path().join("nonexistent");
-    let result = decode_frames_dropping("test", &video_path, &frames_path);
+    let result = decode_frames_dropping("test", &video_path, &frames_path, 30);
     assert!(result.is_err());
 
     Ok(())
@@ -475,7 +475,7 @@ fn test_decode_frames_dropping_invalid_video_path() -> Result<()> {
     let frames_path = tmp_dir.path().join("frames");
     create_dir_all(&frames_path)?;
 
-    let result = decode_frames_dropping("test", &video_path, &frames_path);
+    let result = decode_frames_dropping("test", &video_path, &frames_path, 30);
     assert!(result.is_err());
 
     Ok(())

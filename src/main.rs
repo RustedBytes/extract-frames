@@ -76,12 +76,24 @@ struct Args {
     /// * Incompatible with --use-seek flag
     #[arg(long, action = clap::ArgAction::SetTrue)]
     multicore: bool,
-}
 
-/// Number of frames to skip between extracted frames
-/// For 30fps video, skipping 30 frames extracts 1 frame per second
-/// Adjust this value to control extraction frequency and output size
-const FRAMES_BETWEEN_EXTRACTED: usize = 30;
+    /// Number of frames to skip between extracted frames
+    ///
+    /// Controls the extraction frequency by specifying how many frames to skip
+    /// between each extracted frame. For example, with a 30fps video, setting
+    /// this to 30 will extract 1 frame per second. Lower values extract more
+    /// frames and create larger output.
+    ///
+    /// # Default
+    /// If not specified, defaults to 30 frames.
+    ///
+    /// # Examples
+    /// * 15 for 30fps video = 2 frames per second
+    /// * 30 for 30fps video = 1 frame per second  
+    /// * 60 for 30fps video = 1 frame every 2 seconds
+    #[arg(long, default_value_t = 30)]
+    frames_between: usize,
+}
 
 /// Duration in seconds for each video segment when splitting videos
 /// for parallel processing. Default is 5 seconds per segment.
@@ -280,11 +292,11 @@ fn split_into_segments(
 }
 
 /// Decodes video frames by dropping frames according to
-/// `FRAMES_BETWEEN_EXTRACTED` constant.
+/// `frames_between_extracted` parameter.
 ///
 /// This function implements the basic frame extraction method that processes
 /// videos sequentially. It's memory-efficient and works well for smaller
-/// videos or single-core processing. The `FRAMES_BETWEEN_EXTRACTED` constant
+/// videos or single-core processing. The `frames_between_extracted` parameter
 /// determines which frames are extracted (e.g., every 30th frame for 30fps
 /// video = 1fps output).
 ///
@@ -293,16 +305,18 @@ fn split_into_segments(
 ///   creates "segment-1_0.png")
 /// * `video_path` - Source video file to decode
 /// * `frames_path` - Directory where PNG frame images will be saved
+/// * `frames_between_extracted` - Number of frames to skip between extracted frames
 ///
 /// # Performance Notes
 /// * Frames are processed in decode order without seeking (faster)
-/// * Memory usage scales with `FRAMES_BETWEEN_EXTRACTED` value (lower = more
+/// * Memory usage scales with `frames_between_extracted` value (lower = more
 ///   memory)
 /// * Single-threaded operation unless called within parallel context
 fn decode_frames_dropping(
     frame_prefix: &str,
     video_path: impl AsRef<Path>,
     frames_path: impl AsRef<Path>,
+    frames_between_extracted: usize,
 ) -> Result<()> {
     let video_path = video_path.as_ref();
     let frames_path = frames_path.as_ref();
@@ -324,7 +338,7 @@ fn decode_frames_dropping(
     debug!("Width: {width}, height: {height}");
     debug!("FPS: {fps}");
 
-    for (n, frame_result) in decoder.decode_iter().enumerate().step_by(FRAMES_BETWEEN_EXTRACTED) {
+    for (n, frame_result) in decoder.decode_iter().enumerate().step_by(frames_between_extracted) {
         match frame_result {
             Ok((ts, frame)) => {
                 let frame_time = ts.as_secs_f64();
@@ -541,10 +555,11 @@ fn main() -> Result<(), Error> {
         info!("Segments: {}", segments.len());
 
         let start = Instant::now();
+        let frames_between = args.frames_between;
         segments.par_iter().enumerate().for_each(|(n, path)| {
             let prefix = format!("segment-{n}");
 
-            if let Err(e) = decode_frames_dropping(&prefix, path, &frames_path) {
+            if let Err(e) = decode_frames_dropping(&prefix, path, &frames_path, frames_between) {
                 error!("Error processing segment {n}: {e:?}");
             }
         });
@@ -555,7 +570,7 @@ fn main() -> Result<(), Error> {
 
         decode_frames_seeking("full", &args.file, &frames_path)?;
     } else {
-        decode_frames_dropping("full", &args.file, &frames_path)?;
+        decode_frames_dropping("full", &args.file, &frames_path, args.frames_between)?;
     }
 
     let segments_dir = Path::new("segments");
