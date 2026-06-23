@@ -6,9 +6,19 @@ use std::process::Command;
 use tempfile::tempdir;
 
 use crate::{
-    cleanup_temporary_files, decode_frames_dropping, decode_frames_seeking, get_files, remove_files, remove_folder,
-    save_rgb_to_image, split_into_segments,
+    ImageFormat, OutputOptions, PngCompression, cleanup_temporary_files, decode_frames_dropping, decode_frames_seeking,
+    get_files, remove_files, remove_folder, save_rgb_to_image, split_into_segments,
 };
+
+fn default_output_options() -> OutputOptions {
+    OutputOptions {
+        width: None,
+        height: None,
+        format: ImageFormat::Png,
+        jpeg_quality: 90,
+        png_compression: PngCompression::Default,
+    }
+}
 
 /// Helper to create a small dummy MP4 for testing (requires ffmpeg).
 ///
@@ -127,7 +137,7 @@ fn test_save_rgb_to_image_saves_png() -> Result<()> {
     let red_pixel = [255u8, 0, 0];
     let raw_pixels = red_pixel.repeat((width * height) as usize);
 
-    let result = save_rgb_to_image(&raw_pixels, width, height, &img_path);
+    let result = save_rgb_to_image(&raw_pixels, width, height, &img_path, default_output_options());
     assert!(result.is_ok());
 
     assert!(img_path.exists());
@@ -215,7 +225,7 @@ fn test_save_rgb_to_image_invalid_data() -> Result<()> {
 
     // Provide fewer bytes than needed for a 2x2 image
     let bad_pixels = vec![255u8; 2 * 2 * 2]; // should be 2*2*3=12
-    let result = save_rgb_to_image(&bad_pixels, 2, 2, &img_path);
+    let result = save_rgb_to_image(&bad_pixels, 2, 2, &img_path, default_output_options());
 
     assert!(result.is_err());
 
@@ -237,14 +247,14 @@ fn test_save_rgb_to_image_overwrite() -> Result<()> {
     let red_pixel = [255u8, 0, 0];
     let pixels = red_pixel.repeat((width * height) as usize);
 
-    let result = save_rgb_to_image(&pixels, width, height, &img_path);
+    let result = save_rgb_to_image(&pixels, width, height, &img_path, default_output_options());
     assert!(result.is_ok());
 
     // Overwrite with another color
     let green_pixel = [0u8, 255, 0];
     let pixels = green_pixel.repeat((width * height) as usize);
 
-    let result = save_rgb_to_image(&pixels, width, height, &img_path);
+    let result = save_rgb_to_image(&pixels, width, height, &img_path, default_output_options());
     assert!(result.is_ok());
 
     assert!(img_path.exists());
@@ -371,7 +381,7 @@ fn test_decode_frames_dropping_creates_expected_frames() -> Result<()> {
     create_dir_all(&frames_dir)?;
 
     let prefix = "test";
-    decode_frames_dropping(prefix, video_path, &frames_dir, 30)?;
+    decode_frames_dropping(prefix, video_path, &frames_dir, 30, default_output_options())?;
 
     let frames = read_dir(frames_dir).context("Failed to read frames_dir")?;
     let png_files: Vec<_> = frames
@@ -395,8 +405,53 @@ fn test_save_rgb_to_image_invalid_dimensions() -> Result<()> {
 
     let img_path = tmp_dir.path().join("invalid.png");
     let raw_pixels = vec![255u8; 12]; // valid for 2x2 image
-    let result = save_rgb_to_image(&raw_pixels, 3, 2, &img_path); // invalid dimensions
+    let result = save_rgb_to_image(&raw_pixels, 3, 2, &img_path, default_output_options()); // invalid dimensions
     assert!(result.is_err());
+
+    Ok(())
+}
+
+#[test]
+fn test_save_rgb_to_image_resizes_output() -> Result<()> {
+    let tmp_dir = tempdir()?;
+    let img_path = tmp_dir.path().join("resized.png");
+
+    let width = 4;
+    let height = 2;
+    let red_pixel = [255u8, 0, 0];
+    let raw_pixels = red_pixel.repeat((width * height) as usize);
+    let mut output_options = default_output_options();
+    output_options.width = Some(2);
+
+    save_rgb_to_image(&raw_pixels, width, height, &img_path, output_options)?;
+
+    let resized = image::open(&img_path)?;
+    assert_eq!(resized.width(), 2);
+    assert_eq!(resized.height(), 1);
+
+    Ok(())
+}
+
+#[test]
+fn test_save_rgb_to_image_saves_jpeg() -> Result<()> {
+    let tmp_dir = tempdir()?;
+    let img_path = tmp_dir.path().join("output.jpg");
+
+    let width = 2;
+    let height = 2;
+    let red_pixel = [255u8, 0, 0];
+    let raw_pixels = red_pixel.repeat((width * height) as usize);
+    let mut output_options = default_output_options();
+    output_options.format = ImageFormat::Jpeg;
+    output_options.jpeg_quality = 75;
+
+    save_rgb_to_image(&raw_pixels, width, height, &img_path, output_options)?;
+
+    assert!(img_path.exists());
+    assert_eq!(
+        image::guess_format(&std::fs::read(&img_path)?)?,
+        image::ImageFormat::Jpeg
+    );
 
     Ok(())
 }
@@ -435,7 +490,7 @@ fn test_split_into_segments_invalid_output_pattern() -> Result<()> {
 fn test_decode_frames_seeking_invalid_video_path() -> Result<()> {
     let nonexistent = PathBuf::from("nonexistent.mp4");
     let nonexistent2 = PathBuf::from("nonexistent-folder");
-    let result = decode_frames_seeking("test", &nonexistent, &nonexistent2);
+    let result = decode_frames_seeking("test", &nonexistent, &nonexistent2, default_output_options());
     assert!(result.is_err());
 
     Ok(())
@@ -455,7 +510,7 @@ fn test_decode_frames_dropping_invalid_frames_path() -> Result<()> {
     create_dummy_video(&video_path)?;
 
     let frames_path = tmp_dir.path().join("nonexistent");
-    let result = decode_frames_dropping("test", &video_path, &frames_path, 30);
+    let result = decode_frames_dropping("test", &video_path, &frames_path, 30, default_output_options());
     assert!(result.is_err());
 
     Ok(())
@@ -475,7 +530,7 @@ fn test_decode_frames_dropping_invalid_video_path() -> Result<()> {
     let frames_path = tmp_dir.path().join("frames");
     create_dir_all(&frames_path)?;
 
-    let result = decode_frames_dropping("test", &video_path, &frames_path, 30);
+    let result = decode_frames_dropping("test", &video_path, &frames_path, 30, default_output_options());
     assert!(result.is_err());
 
     Ok(())

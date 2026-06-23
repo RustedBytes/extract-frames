@@ -5,12 +5,19 @@ use ffmpeg_next::format::{Pixel, input};
 use ffmpeg_next::media::Type;
 use ffmpeg_next::software::scaling::{context::Context as ScalingContext, flag::Flags};
 use ffmpeg_next::util::frame::video::Video;
-use num_traits::cast;
+use image::{
+    ColorType, ExtendedColorType, ImageEncoder, RgbImage,
+    codecs::{
+        jpeg::JpegEncoder,
+        png::{CompressionType, FilterType, PngEncoder},
+    },
+    imageops::FilterType as ResizeFilterType,
+};
+use num_traits::{ToPrimitive, cast};
 use {
     anyhow::{Context, Error, Result, anyhow, bail},
-    clap::Parser,
+    clap::{Parser, ValueEnum},
     glob::glob,
-    image::RgbImage,
     log::{debug, error, info},
     rayon::prelude::*,
     std::{
@@ -93,6 +100,90 @@ struct Args {
     /// * 60 for 30fps video = 1 frame every 2 seconds
     #[arg(long, default_value_t = 30)]
     frames_between: usize,
+
+    /// Resize output images to this width in pixels
+    ///
+    /// Can be used with --output-height for exact dimensions, or on its own
+    /// to preserve the source aspect ratio.
+    #[arg(long, value_parser = clap::value_parser!(u32).range(1..))]
+    output_width: Option<u32>,
+
+    /// Resize output images to this height in pixels
+    ///
+    /// Can be used with --output-width for exact dimensions, or on its own
+    /// to preserve the source aspect ratio.
+    #[arg(long, value_parser = clap::value_parser!(u32).range(1..))]
+    output_height: Option<u32>,
+
+    /// Output image format for extracted frames
+    #[arg(long, value_enum, default_value_t = ImageFormat::Png)]
+    output_format: ImageFormat,
+
+    /// JPEG quality from 1 to 100
+    ///
+    /// Only applies when --output-format jpeg is used. Lower values produce
+    /// smaller files with more visible compression artifacts.
+    #[arg(long, default_value_t = 90, value_parser = clap::value_parser!(u8).range(1..=100))]
+    jpeg_quality: u8,
+
+    /// PNG compression level
+    ///
+    /// Higher compression usually creates smaller files but takes longer.
+    #[arg(long, value_enum, default_value_t = PngCompression::Default)]
+    png_compression: PngCompression,
+}
+
+#[derive(Clone, Copy, Debug, ValueEnum)]
+enum ImageFormat {
+    Png,
+    Jpeg,
+}
+
+impl ImageFormat {
+    fn extension(self) -> &'static str {
+        match self {
+            Self::Png => "png",
+            Self::Jpeg => "jpg",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, ValueEnum)]
+enum PngCompression {
+    Fast,
+    Default,
+    Best,
+}
+
+impl From<PngCompression> for CompressionType {
+    fn from(value: PngCompression) -> Self {
+        match value {
+            PngCompression::Fast => Self::Fast,
+            PngCompression::Default => Self::Default,
+            PngCompression::Best => Self::Best,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+struct OutputOptions {
+    width: Option<u32>,
+    height: Option<u32>,
+    format: ImageFormat,
+    jpeg_quality: u8,
+    png_compression: PngCompression,
+}
+
+impl From<&Args> for OutputOptions {
+    fn from(args: &Args) -> Self {
+        Self {
+            width: args.output_width,
+            height: args.output_height,
+            format: args.output_format,
+            jpeg_quality: args.jpeg_quality,
+            png_compression: args.png_compression,
+        }
+    }
 }
 
 /// Duration in seconds for each video segment when splitting videos
@@ -104,9 +195,9 @@ const SEGMENT_DURATION_SECONDS: f64 = 5.0;
 /// `output_000000001.mp4`)
 const SEGMENT_OUTPUT_PATTERN: &str = "segments/output_%09d.mp4";
 
-/// Glob pattern to match all PNG frame images in the frames directory
-/// Used for cleanup operations and file enumeration
-const FRAME_FILES_PATTERN: &str = "frames/*.png";
+/// Glob patterns to match all frame images in the frames directory.
+/// Used for cleanup operations and file enumeration.
+const FRAME_FILES_PATTERNS: &[&str] = &["frames/*.png", "frames/*.jpg", "frames/*.jpeg"];
 
 /// Glob pattern to match all MP4 segment files in the segments directory
 /// Used for finding and cleaning up temporary segment files after processing
@@ -185,11 +276,12 @@ fn remove_files(paths: &[impl AsRef<Path>]) -> Result<(), Error> {
     Ok(())
 }
 
-/// Cleans up the working directories by removing all PNG images in the `frames`
+/// Cleans up the working directories by removing frame images in the `frames`
 /// folder and all MP4 segments in the `segments` folder. Logs the result.
 fn cleanup_temporary_files() -> Result<(), Error> {
-    let paths: Vec<_> = [FRAME_FILES_PATTERN, SEGMENTED_FILES_PATTERN]
+    let paths: Vec<_> = FRAME_FILES_PATTERNS
         .iter()
+        .chain([SEGMENTED_FILES_PATTERN].iter())
         .filter_map(|pattern| get_files(pattern).ok())
         .flatten()
         .collect();
@@ -317,6 +409,7 @@ fn decode_frames_dropping(
     video_path: impl AsRef<Path>,
     frames_path: impl AsRef<Path>,
     frames_between_extracted: usize,
+    output_options: OutputOptions,
 ) -> Result<()> {
     let video_path = video_path.as_ref();
     let frames_path = frames_path.as_ref();
@@ -345,8 +438,8 @@ fn decode_frames_dropping(
                 debug!("Frame time: {frame_time}");
 
                 if let Some(rgb) = frame.as_slice() {
-                    let path = frames_path.join(format!("{frame_prefix}_{n}.png"));
-                    save_rgb_to_image(rgb, width, height, &path)?;
+                    let path = frames_path.join(format!("{frame_prefix}_{n}.{}", output_options.format.extension()));
+                    save_rgb_to_image(rgb, width, height, &path, output_options)?;
                 } else {
                     error!("Failed to get frame buffer as slice for frame {n}");
                 }
@@ -386,6 +479,7 @@ fn decode_frames_seeking(
     frame_prefix: &str,
     video_path: impl AsRef<Path>,
     frames_path: impl AsRef<Path>,
+    output_options: OutputOptions,
 ) -> Result<()> {
     let mut ictx = input(&video_path)?;
 
@@ -433,9 +527,9 @@ fn decode_frames_seeking(
                 let mut rgb_frame = Video::empty();
                 scaler.run(&decoded, &mut rgb_frame)?;
 
-                let path = frames_path.join(format!("{frame_prefix}_{n}.png"));
+                let path = frames_path.join(format!("{frame_prefix}_{n}.{}", output_options.format.extension()));
 
-                save_rgb_to_image(rgb_frame.data(0), width, height, &path)
+                save_rgb_to_image(rgb_frame.data(0), width, height, &path, output_options)
             } else {
                 // This can happen if the packet didn't contain a full frame
                 Err(Error::from(ffmpeg_next::Error::from(ffmpeg_next::ffi::EAGAIN)))
@@ -462,7 +556,7 @@ fn decode_frames_seeking(
     Ok(())
 }
 
-/// Saves raw RGB pixel data as a PNG image at the specified path.
+/// Saves raw RGB pixel data as an image at the specified path.
 ///
 /// Takes a slice of raw RGB pixel data and creates a PNG image file with
 /// the specified dimensions. The function handles the conversion from raw
@@ -487,11 +581,82 @@ fn decode_frames_seeking(
 /// let pixels = red_pixel.repeat(4); // 2x2 image
 /// save_rgb_to_image(&pixels, 2, 2, Path::new("red_square.png"))?;
 /// ```
-fn save_rgb_to_image(raw_pixels: &[u8], width: u32, height: u32, path: impl AsRef<Path>) -> Result<()> {
-    let img_buffer: RgbImage =
+fn calculate_output_size(width: u32, height: u32, output_options: OutputOptions) -> Result<(u32, u32)> {
+    match (output_options.width, output_options.height) {
+        (Some(output_width), Some(output_height)) => Ok((output_width, output_height)),
+        (Some(output_width), None) => {
+            let output_height = scaled_dimension(height, output_width, width)?;
+            Ok((output_width, output_height))
+        },
+        (None, Some(output_height)) => {
+            let output_width = scaled_dimension(width, output_height, height)?;
+            Ok((output_width, output_height))
+        },
+        (None, None) => Ok((width, height)),
+    }
+}
+
+fn scaled_dimension(dimension: u32, target_other_dimension: u32, source_other_dimension: u32) -> Result<u32> {
+    if source_other_dimension == 0 {
+        bail!("Cannot resize image with zero source dimension");
+    }
+
+    let scaled = u64::from(dimension)
+        .checked_mul(u64::from(target_other_dimension))
+        .context("Resized image dimension overflowed")?
+        / u64::from(source_other_dimension);
+
+    scaled
+        .max(1)
+        .to_u32()
+        .context("Resized image dimension exceeds supported size")
+}
+
+fn save_rgb_to_image(
+    raw_pixels: &[u8],
+    width: u32,
+    height: u32,
+    path: impl AsRef<Path>,
+    output_options: OutputOptions,
+) -> Result<()> {
+    let img_buffer =
         RgbImage::from_raw(width, height, raw_pixels.to_vec()).context("Could not create RgbImage from raw data.")?;
 
-    img_buffer.save(path).context("Error saving image")?;
+    let (output_width, output_height) = calculate_output_size(width, height, output_options)?;
+    let img_buffer = if output_width == width && output_height == height {
+        img_buffer
+    } else {
+        image::imageops::resize(&img_buffer, output_width, output_height, ResizeFilterType::Lanczos3)
+    };
+
+    let mut output = std::fs::File::create(path.as_ref())
+        .with_context(|| format!("Error creating image {}", path.as_ref().display()))?;
+
+    match output_options.format {
+        ImageFormat::Png => {
+            let encoder =
+                PngEncoder::new_with_quality(&mut output, output_options.png_compression.into(), FilterType::Adaptive);
+            encoder
+                .write_image(
+                    img_buffer.as_raw(),
+                    img_buffer.width(),
+                    img_buffer.height(),
+                    ExtendedColorType::Rgb8,
+                )
+                .context("Error saving PNG image")?;
+        },
+        ImageFormat::Jpeg => {
+            let encoder = JpegEncoder::new_with_quality(&mut output, output_options.jpeg_quality);
+            encoder
+                .write_image(
+                    img_buffer.as_raw(),
+                    img_buffer.width(),
+                    img_buffer.height(),
+                    ColorType::Rgb8.into(),
+                )
+                .context("Error saving JPEG image")?;
+        },
+    }
 
     Ok(())
 }
@@ -546,6 +711,7 @@ fn main() -> Result<(), Error> {
 
     let path = env::current_dir().context("failed to get current path")?;
     let frames_path = path.join("frames");
+    let output_options = OutputOptions::from(&args);
 
     if args.multicore {
         video_rs::init().expect("video-rs failed to initialize");
@@ -559,7 +725,7 @@ fn main() -> Result<(), Error> {
         segments.par_iter().enumerate().for_each(|(n, path)| {
             let prefix = format!("segment-{n}");
 
-            if let Err(e) = decode_frames_dropping(&prefix, path, &frames_path, frames_between) {
+            if let Err(e) = decode_frames_dropping(&prefix, path, &frames_path, frames_between, output_options) {
                 error!("Error processing segment {n}: {e:?}");
             }
         });
@@ -568,9 +734,9 @@ fn main() -> Result<(), Error> {
     } else if args.use_seek {
         ffmpeg_next::init().expect("ffmpeg-next failed to initialize");
 
-        decode_frames_seeking("full", &args.file, &frames_path)?;
+        decode_frames_seeking("full", &args.file, &frames_path, output_options)?;
     } else {
-        decode_frames_dropping("full", &args.file, &frames_path, args.frames_between)?;
+        decode_frames_dropping("full", &args.file, &frames_path, args.frames_between, output_options)?;
     }
 
     let segments_dir = Path::new("segments");

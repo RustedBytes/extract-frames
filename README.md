@@ -19,6 +19,8 @@ using FFmpeg, supporting both sequential and parallel processing modes.
 ## Features
 
 * Support for parallel processing using multiple CPU cores
+* Optional output image resizing
+* PNG compression and JPEG quality controls
 * Robust error handling for file operations and FFmpeg interactions
 * Comprehensive test suite for core functionality
 
@@ -36,6 +38,26 @@ cargo run -- --file input.mp4
 ```
 
 The extracted frames will be saved as PNG files in the `frames` directory.
+
+### Resize and Compress Output Images
+
+To resize extracted frames to 640 pixels wide while preserving aspect ratio:
+
+```bash
+cargo run -- --file input.mp4 --output-width 640
+```
+
+To write JPEG frames with a smaller file size:
+
+```bash
+cargo run -- --file input.mp4 --output-format jpeg --jpeg-quality 75
+```
+
+To use stronger PNG compression:
+
+```bash
+cargo run -- --file input.mp4 --png-compression best
+```
 
 ### Extract One Frame Per Second
 
@@ -59,6 +81,14 @@ cargo run -- --file input.mp4 --multicore
 * `--file <PATH>`: Specify input video file (default: "video.mp4")
 * `--use-seek`: Enable seek-based frame extraction (one frame per second)
 * `--multicore`: Enable parallel processing using multiple CPU cores
+* `--frames-between <N>`: Number of frames to skip between extracted frames
+  (default: 30)
+* `--output-width <PIXELS>`: Resize output images to this width
+* `--output-height <PIXELS>`: Resize output images to this height
+* `--output-format <png|jpeg>`: Output image format (default: `png`)
+* `--jpeg-quality <1-100>`: JPEG quality when writing JPEGs (default: 90)
+* `--png-compression <fast|default|best>`: PNG compression level (default:
+  `default`)
 
 ## Requirements
 
