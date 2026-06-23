@@ -94,7 +94,7 @@ struct Args {
     ///
     /// # Examples
     /// * 15 for 30fps video = 2 frames per second
-    /// * 30 for 30fps video = 1 frame per second  
+    /// * 30 for 30fps video = 1 frame per second
     /// * 60 for 30fps video = 1 frame every 2 seconds
     #[arg(long, default_value_t = 30)]
     frames_between: usize,
@@ -409,7 +409,8 @@ fn split_into_segments(
 ///   creates "segment-1_0.png")
 /// * `video_path` - Source video file to decode
 /// * `frames_path` - Directory where PNG frame images will be saved
-/// * `frames_between_extracted` - Number of frames to skip between extracted frames
+/// * `frames_between_extracted` - Number of frames to skip between extracted
+///   frames
 ///
 /// # Performance Notes
 /// * Frames are processed in decode order without seeking (faster)
