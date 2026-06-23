@@ -18,7 +18,7 @@ jobs:
       - name: Install libav libraries
         uses: tecolicom/actions-use-apt-tools@v1
         with:
-          tools: libavcodec-dev libavformat-dev libswscale-dev libavfilter-dev libavdevice-dev libavutil-dev yasm
+          tools: nasm libavcodec-dev libavformat-dev libswscale-dev libavfilter-dev libavdevice-dev libavutil-dev yasm
           method: timestamp
       - name: Setup FFmpeg
         uses: AnimMouse/setup-ffmpeg@v1
