@@ -7,13 +7,11 @@ use ffmpeg_next::software::scaling::{context::Context as ScalingContext, flag::F
 use ffmpeg_next::util::frame::video::Video;
 use image::{
     ColorType, ExtendedColorType, ImageEncoder, RgbImage,
-    codecs::{
-        jpeg::JpegEncoder,
-        png::{CompressionType, FilterType, PngEncoder},
-    },
+    codecs::{jpeg::JpegEncoder, png::PngEncoder},
     imageops::FilterType as ResizeFilterType,
 };
 use num_traits::{ToPrimitive, cast};
+use oxipng::Options as OxipngOptions;
 use {
     anyhow::{Context, Error, Result, anyhow, bail},
     clap::{Parser, ValueEnum},
@@ -155,12 +153,26 @@ enum PngCompression {
     Best,
 }
 
-impl From<PngCompression> for CompressionType {
-    fn from(value: PngCompression) -> Self {
-        match value {
-            PngCompression::Fast => Self::Fast,
-            PngCompression::Default => Self::Default,
-            PngCompression::Best => Self::Best,
+impl PngCompression {
+    fn oxipng_preset(self) -> u8 {
+        match self {
+            Self::Fast => 1,
+            Self::Default => 2,
+            Self::Best => 6,
+        }
+    }
+
+    fn oxipng_options(self) -> OxipngOptions {
+        OxipngOptions::from_preset(self.oxipng_preset())
+    }
+}
+
+impl std::fmt::Display for PngCompression {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PngCompression::Fast => f.write_str("fast"),
+            PngCompression::Default => f.write_str("default"),
+            PngCompression::Best => f.write_str("best"),
         }
     }
 }
@@ -629,13 +641,10 @@ fn save_rgb_to_image(
         image::imageops::resize(&img_buffer, output_width, output_height, ResizeFilterType::Lanczos3)
     };
 
-    let mut output = std::fs::File::create(path.as_ref())
-        .with_context(|| format!("Error creating image {}", path.as_ref().display()))?;
-
     match output_options.format {
         ImageFormat::Png => {
-            let encoder =
-                PngEncoder::new_with_quality(&mut output, output_options.png_compression.into(), FilterType::Adaptive);
+            let mut png_data = Vec::new();
+            let encoder = PngEncoder::new(&mut png_data);
             encoder
                 .write_image(
                     img_buffer.as_raw(),
@@ -643,9 +652,17 @@ fn save_rgb_to_image(
                     img_buffer.height(),
                     ExtendedColorType::Rgb8,
                 )
-                .context("Error saving PNG image")?;
+                .context("Error encoding PNG image")?;
+
+            let optimized_png =
+                oxipng::optimize_from_memory(&png_data, &output_options.png_compression.oxipng_options())
+                    .with_context(|| format!("Error optimizing PNG with oxipng {}", output_options.png_compression))?;
+            std::fs::write(path.as_ref(), optimized_png)
+                .with_context(|| format!("Error saving PNG image {}", path.as_ref().display()))?;
         },
         ImageFormat::Jpeg => {
+            let mut output = std::fs::File::create(path.as_ref())
+                .with_context(|| format!("Error creating image {}", path.as_ref().display()))?;
             let encoder = JpegEncoder::new_with_quality(&mut output, output_options.jpeg_quality);
             encoder
                 .write_image(

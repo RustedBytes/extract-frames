@@ -59,6 +59,8 @@ To use stronger PNG compression:
 cargo run -- --file input.mp4 --png-compression best
 ```
 
+PNG compression is optimized losslessly with `oxipng`.
+
 ### Extract One Frame Per Second
 
 To extract one frame per second using the seek-based method:
