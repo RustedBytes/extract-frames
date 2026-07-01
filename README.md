@@ -79,7 +79,9 @@ cargo run -- --file input.mp4 --output-full-pane
 
 The combined image is saved to `frames/full-pane.png` by default. It uses the
 same resize, format, JPEG quality, PNG compression, and frame sampling options
-as regular extraction.
+as regular extraction. If the combined pane would exceed 8192x8192 pixels, the
+frame tiles are resized proportionally so the final image fits within that
+limit.
 
 ### Extract One Frame Per Second
 
@@ -114,6 +116,7 @@ cargo run -- --file input.mp4 --multicore
 * `--no-png-optimization`: Disable lossless PNG optimization with `oxipng`
 * `--output-full-pane`: Save all extracted frames as one near-square grid image
   at `frames/full-pane.<format>` instead of writing individual frame files
+  (capped at 8192x8192 pixels)
 
 ## Requirements
 

@@ -16,3 +16,5 @@ testlog
 tarpaulin-report.html
 
 ctx.md
+
+*.mp4

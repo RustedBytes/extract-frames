@@ -7,9 +7,10 @@ use std::process::Command;
 use tempfile::tempdir;
 
 use crate::{
-    ExtractedFrame, ImageFormat, OutputOptions, PngCompression, calculate_full_pane_grid, cleanup_temporary_files,
-    decode_frames_dropping, decode_frames_seeking, extract_frames_dropping, get_files, remove_files, remove_folder,
-    render_full_pane, save_rgb_to_image, split_into_segments,
+    ExtractedFrame, FULL_PANE_MAX_HEIGHT, FULL_PANE_MAX_WIDTH, ImageFormat, OutputOptions, PngCompression,
+    calculate_full_pane_grid, calculate_full_pane_tile_size, cleanup_temporary_files, decode_frames_dropping,
+    decode_frames_seeking, extract_frames_dropping, get_files, remove_files, remove_folder, render_full_pane,
+    save_rgb_to_image, split_into_segments, strided_rgb_to_image,
 };
 
 fn default_output_options() -> OutputOptions {
@@ -463,6 +464,23 @@ fn test_save_rgb_to_image_resizes_output() -> Result<()> {
 }
 
 #[test]
+fn test_strided_rgb_to_image_skips_row_padding() -> Result<()> {
+    let raw_pixels = vec![
+        255, 0, 0, 0, 255, 0, 99, 99, // row 1: red, green, padding
+        0, 0, 255, 255, 255, 255, 88, 88, // row 2: blue, white, padding
+    ];
+
+    let image = strided_rgb_to_image(&raw_pixels, 2, 2, 8, default_output_options())?;
+
+    assert_eq!(*image.get_pixel(0, 0), Rgb([255, 0, 0]));
+    assert_eq!(*image.get_pixel(1, 0), Rgb([0, 255, 0]));
+    assert_eq!(*image.get_pixel(0, 1), Rgb([0, 0, 255]));
+    assert_eq!(*image.get_pixel(1, 1), Rgb([255, 255, 255]));
+
+    Ok(())
+}
+
+#[test]
 fn test_calculate_full_pane_grid() -> Result<()> {
     assert_eq!(calculate_full_pane_grid(1)?, (1, 1));
     assert_eq!(calculate_full_pane_grid(2)?, (2, 1));
@@ -471,6 +489,15 @@ fn test_calculate_full_pane_grid() -> Result<()> {
     assert_eq!(calculate_full_pane_grid(5)?, (3, 2));
     assert_eq!(calculate_full_pane_grid(9)?, (3, 3));
     assert!(calculate_full_pane_grid(0).is_err());
+
+    Ok(())
+}
+
+#[test]
+fn test_calculate_full_pane_tile_size_caps_large_canvas() -> Result<()> {
+    assert_eq!(calculate_full_pane_tile_size(120, 213, 7, 7)?, (120, 213));
+    assert_eq!(calculate_full_pane_tile_size(1080, 1920, 7, 7)?, (658, 1170));
+    assert!(calculate_full_pane_tile_size(1, 1, 8193, 1).is_err());
 
     Ok(())
 }
@@ -503,6 +530,31 @@ fn test_render_full_pane_arranges_frames() -> Result<()> {
     assert_eq!(*pane.get_pixel(2, 0), Rgb([0, 255, 0]));
     assert_eq!(*pane.get_pixel(0, 2), Rgb([0, 0, 255]));
     assert_eq!(*pane.get_pixel(2, 2), Rgb([0, 0, 0]));
+
+    Ok(())
+}
+
+#[test]
+fn test_render_full_pane_caps_canvas_size() -> Result<()> {
+    let tmp_dir = tempdir()?;
+    let img_path = tmp_dir.path().join("full-pane.png");
+    let frames = vec![
+        ExtractedFrame {
+            source_index: 0,
+            image: RgbImage::from_pixel(5000, 100, Rgb([255, 0, 0])),
+        },
+        ExtractedFrame {
+            source_index: 1,
+            image: RgbImage::from_pixel(5000, 100, Rgb([0, 255, 0])),
+        },
+    ];
+
+    render_full_pane(&frames, &img_path, default_output_options())?;
+
+    let pane = image::open(&img_path)?;
+    assert!(pane.width() <= FULL_PANE_MAX_WIDTH);
+    assert!(pane.height() <= FULL_PANE_MAX_HEIGHT);
+    assert_eq!(pane.width(), FULL_PANE_MAX_WIDTH);
 
     Ok(())
 }
