@@ -19,6 +19,7 @@ fn default_output_options() -> OutputOptions {
         format: ImageFormat::Png,
         jpeg_quality: 90,
         png_compression: PngCompression::Default,
+        optimize_png: true,
     }
 }
 
@@ -147,6 +148,29 @@ fn test_save_rgb_to_image_saves_png() -> Result<()> {
     assert!(result.is_ok());
 
     assert!(img_path.exists());
+
+    Ok(())
+}
+
+#[test]
+fn test_save_rgb_to_image_saves_png_without_optimization() -> Result<()> {
+    let tmp_dir = tempdir()?;
+    let img_path = tmp_dir.path().join("output.png");
+
+    let width = 2;
+    let height = 2;
+    let red_pixel = [255u8, 0, 0];
+    let raw_pixels = red_pixel.repeat((width * height) as usize);
+    let mut output_options = default_output_options();
+    output_options.optimize_png = false;
+
+    save_rgb_to_image(&raw_pixels, width, height, &img_path, output_options)?;
+
+    assert!(img_path.exists());
+    assert_eq!(
+        image::guess_format(&std::fs::read(&img_path)?)?,
+        image::ImageFormat::Png
+    );
 
     Ok(())
 }

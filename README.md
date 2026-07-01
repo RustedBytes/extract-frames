@@ -62,6 +62,12 @@ cargo run -- --file input.mp4 --png-compression best
 
 PNG compression is optimized losslessly with `oxipng`.
 
+To skip PNG optimization for faster PNG writes:
+
+```bash
+cargo run -- --file input.mp4 --no-png-optimization
+```
+
 ### Create a Combined Full-Pane Image
 
 To render all extracted frames into one near-square grid image instead of
@@ -105,6 +111,7 @@ cargo run -- --file input.mp4 --multicore
 * `--jpeg-quality <1-100>`: JPEG quality when writing JPEGs (default: 90)
 * `--png-compression <fast|default|best>`: PNG compression level (default:
   `default`)
+* `--no-png-optimization`: Disable lossless PNG optimization with `oxipng`
 * `--output-full-pane`: Save all extracted frames as one near-square grid image
   at `frames/full-pane.<format>` instead of writing individual frame files
 

@@ -130,6 +130,13 @@ struct Args {
     #[arg(long, value_enum, default_value_t = PngCompression::Default)]
     png_compression: PngCompression,
 
+    /// Disable lossless PNG optimization with oxipng
+    ///
+    /// When enabled, PNG files are written directly after image encoding.
+    /// This can make PNG output faster at the cost of larger files.
+    #[arg(long, action = clap::ArgAction::SetTrue)]
+    no_png_optimization: bool,
+
     /// Render all extracted frames into one combined image
     ///
     /// When enabled, extracted frames are arranged left-to-right in an
@@ -192,6 +199,7 @@ struct OutputOptions {
     format: ImageFormat,
     jpeg_quality: u8,
     png_compression: PngCompression,
+    optimize_png: bool,
 }
 
 impl From<&Args> for OutputOptions {
@@ -202,6 +210,7 @@ impl From<&Args> for OutputOptions {
             format: args.output_format,
             jpeg_quality: args.jpeg_quality,
             png_compression: args.png_compression,
+            optimize_png: !args.no_png_optimization,
         }
     }
 }
@@ -728,10 +737,13 @@ fn write_rgb_image(img_buffer: &RgbImage, path: impl AsRef<Path>, output_options
                 )
                 .context("Error encoding PNG image")?;
 
-            let optimized_png =
+            let output_png = if output_options.optimize_png {
                 oxipng::optimize_from_memory(&png_data, &output_options.png_compression.oxipng_options())
-                    .with_context(|| format!("Error optimizing PNG with oxipng {}", output_options.png_compression))?;
-            std::fs::write(path.as_ref(), optimized_png)
+                    .with_context(|| format!("Error optimizing PNG with oxipng {}", output_options.png_compression))?
+            } else {
+                png_data
+            };
+            std::fs::write(path.as_ref(), output_png)
                 .with_context(|| format!("Error saving PNG image {}", path.as_ref().display()))?;
         },
         ImageFormat::Jpeg => {
