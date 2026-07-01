@@ -129,6 +129,14 @@ struct Args {
     /// Higher compression usually creates smaller files but takes longer.
     #[arg(long, value_enum, default_value_t = PngCompression::Default)]
     png_compression: PngCompression,
+
+    /// Render all extracted frames into one combined image
+    ///
+    /// When enabled, extracted frames are arranged left-to-right in an
+    /// automatically sized near-square grid and saved as one image at
+    /// frames/full-pane.<format> instead of saving each frame separately.
+    #[arg(long, action = clap::ArgAction::SetTrue)]
+    output_full_pane: bool,
 }
 
 #[derive(Clone, Copy, Debug, ValueEnum)]
@@ -196,6 +204,12 @@ impl From<&Args> for OutputOptions {
             png_compression: args.png_compression,
         }
     }
+}
+
+#[derive(Debug)]
+struct ExtractedFrame {
+    source_index: usize,
+    image: RgbImage,
 }
 
 /// Duration in seconds for each video segment when splitting videos
@@ -424,6 +438,31 @@ fn decode_frames_dropping(
     frames_between_extracted: usize,
     output_options: OutputOptions,
 ) -> Result<()> {
+    let frames = extract_frames_dropping(
+        video_path,
+        frames_path.as_ref(),
+        frames_between_extracted,
+        output_options,
+    )?;
+
+    for frame in frames {
+        let path = frames_path.as_ref().join(format!(
+            "{frame_prefix}_{}.{}",
+            frame.source_index,
+            output_options.format.extension()
+        ));
+        write_rgb_image(&frame.image, &path, output_options)?;
+    }
+
+    Ok(())
+}
+
+fn extract_frames_dropping(
+    video_path: impl AsRef<Path>,
+    frames_path: impl AsRef<Path>,
+    frames_between_extracted: usize,
+    output_options: OutputOptions,
+) -> Result<Vec<ExtractedFrame>> {
     let video_path = video_path.as_ref();
     let frames_path = frames_path.as_ref();
 
@@ -444,6 +483,8 @@ fn decode_frames_dropping(
     debug!("Width: {width}, height: {height}");
     debug!("FPS: {fps}");
 
+    let mut frames = Vec::new();
+
     for (n, frame_result) in decoder.decode_iter().enumerate().step_by(frames_between_extracted) {
         match frame_result {
             Ok((ts, frame)) => {
@@ -451,8 +492,10 @@ fn decode_frames_dropping(
                 debug!("Frame time: {frame_time}");
 
                 if let Some(rgb) = frame.as_slice() {
-                    let path = frames_path.join(format!("{frame_prefix}_{n}.{}", output_options.format.extension()));
-                    save_rgb_to_image(rgb, width, height, &path, output_options)?;
+                    frames.push(ExtractedFrame {
+                        source_index: n,
+                        image: rgb_to_image(rgb, width, height, output_options)?,
+                    });
                 } else {
                     error!("Failed to get frame buffer as slice for frame {n}");
                 }
@@ -467,9 +510,9 @@ fn decode_frames_dropping(
         }
     }
 
-    info!("Elapsed frame {frame_prefix}: {:.2?}", start.elapsed());
+    info!("Elapsed frame extraction: {:.2?}", start.elapsed());
 
-    Ok(())
+    Ok(frames)
 }
 
 /// Decodes one frame per second by seeking to specific timestamps.
@@ -494,6 +537,21 @@ fn decode_frames_seeking(
     frames_path: impl AsRef<Path>,
     output_options: OutputOptions,
 ) -> Result<()> {
+    let frames = extract_frames_seeking(video_path, output_options)?;
+
+    for frame in frames {
+        let path = frames_path.as_ref().join(format!(
+            "{frame_prefix}_{}.{}",
+            frame.source_index,
+            output_options.format.extension()
+        ));
+        write_rgb_image(&frame.image, &path, output_options)?;
+    }
+
+    Ok(())
+}
+
+fn extract_frames_seeking(video_path: impl AsRef<Path>, output_options: OutputOptions) -> Result<Vec<ExtractedFrame>> {
     let mut ictx = input(&video_path)?;
 
     let input_stream = ictx
@@ -517,7 +575,6 @@ fn decode_frames_seeking(
 
     let width = video_decoder.width();
     let height = video_decoder.height();
-    let frames_path = frames_path.as_ref();
 
     debug!("Width: {width}, height: {height}");
     debug!("Total duration: {duration_secs:.2} seconds");
@@ -533,21 +590,26 @@ fn decode_frames_seeking(
         Flags::BILINEAR,
     )?;
 
-    let receive_and_process_frame =
-        |decoder: &mut ffmpeg_next::decoder::Video, scaler: &mut ScalingContext, n: i64| -> Result<(), Error> {
-            let mut decoded = Video::empty();
-            if decoder.receive_frame(&mut decoded).is_ok() {
-                let mut rgb_frame = Video::empty();
-                scaler.run(&decoded, &mut rgb_frame)?;
+    let receive_and_process_frame = |decoder: &mut ffmpeg_next::decoder::Video,
+                                     scaler: &mut ScalingContext,
+                                     n: i64|
+     -> Result<ExtractedFrame, Error> {
+        let mut decoded = Video::empty();
+        if decoder.receive_frame(&mut decoded).is_ok() {
+            let mut rgb_frame = Video::empty();
+            scaler.run(&decoded, &mut rgb_frame)?;
 
-                let path = frames_path.join(format!("{frame_prefix}_{n}.{}", output_options.format.extension()));
+            Ok(ExtractedFrame {
+                source_index: n.to_usize().context("Frame index exceeds supported size")?,
+                image: rgb_to_image(rgb_frame.data(0), width, height, output_options)?,
+            })
+        } else {
+            // This can happen if the packet didn't contain a full frame
+            Err(Error::from(ffmpeg_next::Error::from(ffmpeg_next::ffi::EAGAIN)))
+        }
+    };
 
-                save_rgb_to_image(rgb_frame.data(0), width, height, &path, output_options)
-            } else {
-                // This can happen if the packet didn't contain a full frame
-                Err(Error::from(ffmpeg_next::Error::from(ffmpeg_next::ffi::EAGAIN)))
-            }
-        };
+    let mut frames = Vec::new();
 
     let tb = i64::from(ffmpeg_next::ffi::AV_TIME_BASE);
     for n in 0..duration_sec_int as i64 {
@@ -558,7 +620,8 @@ fn decode_frames_seeking(
         for (stream, packet) in ictx.packets() {
             if stream.index() == video_stream_index {
                 video_decoder.send_packet(&packet)?;
-                if receive_and_process_frame(&mut video_decoder, &mut scaler, n).is_ok() {
+                if let Ok(frame) = receive_and_process_frame(&mut video_decoder, &mut scaler, n) {
+                    frames.push(frame);
                     // Frame found and saved, break to the next second
                     break;
                 }
@@ -566,7 +629,7 @@ fn decode_frames_seeking(
         }
     }
 
-    Ok(())
+    Ok(frames)
 }
 
 /// Saves raw RGB pixel data as an image at the specified path.
@@ -625,13 +688,7 @@ fn scaled_dimension(dimension: u32, target_other_dimension: u32, source_other_di
         .context("Resized image dimension exceeds supported size")
 }
 
-fn save_rgb_to_image(
-    raw_pixels: &[u8],
-    width: u32,
-    height: u32,
-    path: impl AsRef<Path>,
-    output_options: OutputOptions,
-) -> Result<()> {
+fn rgb_to_image(raw_pixels: &[u8], width: u32, height: u32, output_options: OutputOptions) -> Result<RgbImage> {
     let img_buffer =
         RgbImage::from_raw(width, height, raw_pixels.to_vec()).context("Could not create RgbImage from raw data.")?;
 
@@ -642,6 +699,22 @@ fn save_rgb_to_image(
         image::imageops::resize(&img_buffer, output_width, output_height, ResizeFilterType::Lanczos3)
     };
 
+    Ok(img_buffer)
+}
+
+#[cfg(test)]
+fn save_rgb_to_image(
+    raw_pixels: &[u8],
+    width: u32,
+    height: u32,
+    path: impl AsRef<Path>,
+    output_options: OutputOptions,
+) -> Result<()> {
+    let img_buffer = rgb_to_image(raw_pixels, width, height, output_options)?;
+    write_rgb_image(&img_buffer, path, output_options)
+}
+
+fn write_rgb_image(img_buffer: &RgbImage, path: impl AsRef<Path>, output_options: OutputOptions) -> Result<()> {
     match output_options.format {
         ImageFormat::Png => {
             let mut png_data = Vec::new();
@@ -677,6 +750,67 @@ fn save_rgb_to_image(
     }
 
     Ok(())
+}
+
+fn calculate_full_pane_grid(frame_count: usize) -> Result<(usize, usize)> {
+    if frame_count == 0 {
+        bail!("Cannot render full pane without extracted frames");
+    }
+
+    let columns = (frame_count as f64)
+        .sqrt()
+        .ceil()
+        .to_usize()
+        .context("Grid column count overflowed")?;
+    let rows = frame_count.div_ceil(columns);
+
+    Ok((columns, rows))
+}
+
+fn render_full_pane(frames: &[ExtractedFrame], path: impl AsRef<Path>, output_options: OutputOptions) -> Result<()> {
+    let first_frame = frames
+        .first()
+        .context("Cannot render full pane without extracted frames")?;
+    let tile_width = first_frame.image.width();
+    let tile_height = first_frame.image.height();
+
+    for frame in frames {
+        if frame.image.width() != tile_width || frame.image.height() != tile_height {
+            bail!("Cannot render full pane from frames with different dimensions");
+        }
+    }
+
+    let (columns, rows) = calculate_full_pane_grid(frames.len())?;
+    let columns_u32 = columns.to_u32().context("Grid column count exceeds supported size")?;
+    let rows_u32 = rows.to_u32().context("Grid row count exceeds supported size")?;
+    let canvas_width = tile_width
+        .checked_mul(columns_u32)
+        .context("Full pane image width overflowed")?;
+    let canvas_height = tile_height
+        .checked_mul(rows_u32)
+        .context("Full pane image height overflowed")?;
+    let mut pane = RgbImage::new(canvas_width, canvas_height);
+
+    for (n, frame) in frames.iter().enumerate() {
+        let column = n % columns;
+        let row = n / columns;
+        let x = tile_width
+            .checked_mul(column.to_u32().context("Grid column index exceeds supported size")?)
+            .context("Full pane x offset overflowed")?;
+        let y = tile_height
+            .checked_mul(row.to_u32().context("Grid row index exceeds supported size")?)
+            .context("Full pane y offset overflowed")?;
+
+        image::imageops::overlay(&mut pane, &frame.image, i64::from(x), i64::from(y));
+    }
+
+    write_rgb_image(&pane, path, output_options)
+}
+
+fn full_pane_output_path(frames_path: impl AsRef<Path>, output_options: OutputOptions) -> PathBuf {
+    frames_path
+        .as_ref()
+        .join(format!("full-pane.{}", output_options.format.extension()))
 }
 
 /// Main entry point for the frame extraction application.
@@ -740,21 +874,61 @@ fn main() -> Result<(), Error> {
 
         let start = Instant::now();
         let frames_between = args.frames_between;
-        segments.par_iter().enumerate().for_each(|(n, path)| {
-            let prefix = format!("segment-{n}");
+        if args.output_full_pane {
+            let mut segment_paths: Vec<PathBuf> = segments.iter().map(|path| path.as_ref().to_path_buf()).collect();
+            segment_paths.sort();
 
-            if let Err(e) = decode_frames_dropping(&prefix, path, &frames_path, frames_between, output_options) {
-                error!("Error processing segment {n}: {e:?}");
-            }
-        });
+            let mut segment_frames: Vec<_> = segment_paths
+                .par_iter()
+                .enumerate()
+                .map(|(n, path)| {
+                    extract_frames_dropping(path, &frames_path, frames_between, output_options)
+                        .map(|frames| (n, frames))
+                })
+                .collect::<Result<Vec<_>>>()?;
+            segment_frames.sort_by_key(|(n, _)| *n);
+
+            let frames: Vec<_> = segment_frames.into_iter().flat_map(|(_, frames)| frames).collect();
+            render_full_pane(
+                &frames,
+                full_pane_output_path(&frames_path, output_options),
+                output_options,
+            )?;
+        } else {
+            segments.par_iter().enumerate().for_each(|(n, path)| {
+                let prefix = format!("segment-{n}");
+
+                if let Err(e) = decode_frames_dropping(&prefix, path, &frames_path, frames_between, output_options) {
+                    error!("Error processing segment {n}: {e:?}");
+                }
+            });
+        }
 
         info!("Elapsed total: {:.2?}", start.elapsed());
     } else if args.use_seek {
         ffmpeg_next::init().expect("ffmpeg-next failed to initialize");
 
-        decode_frames_seeking("full", &args.file, &frames_path, output_options)?;
+        if args.output_full_pane {
+            let frames = extract_frames_seeking(&args.file, output_options)?;
+            render_full_pane(
+                &frames,
+                full_pane_output_path(&frames_path, output_options),
+                output_options,
+            )?;
+        } else {
+            decode_frames_seeking("full", &args.file, &frames_path, output_options)?;
+        }
     } else {
-        decode_frames_dropping("full", &args.file, &frames_path, args.frames_between, output_options)?;
+        if args.output_full_pane {
+            let frames = extract_frames_dropping(&args.file, &frames_path, args.frames_between, output_options)?;
+            render_full_pane(
+                &frames,
+                full_pane_output_path(&frames_path, output_options),
+                output_options,
+            )?;
+        } else {
+            decode_frames_dropping("full", &args.file, &frames_path, args.frames_between, output_options)?;
+        }
     }
 
     let segments_dir = Path::new("segments");

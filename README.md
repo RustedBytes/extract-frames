@@ -19,6 +19,7 @@ using FFmpeg, supporting both sequential and parallel processing modes.
 ## Features
 
 * Support for parallel processing using multiple CPU cores
+* Optional combined full-pane image output for reviewing all extracted frames at once
 * Optional output image resizing
 * PNG compression and JPEG quality controls
 * Robust error handling for file operations and FFmpeg interactions
@@ -61,6 +62,19 @@ cargo run -- --file input.mp4 --png-compression best
 
 PNG compression is optimized losslessly with `oxipng`.
 
+### Create a Combined Full-Pane Image
+
+To render all extracted frames into one near-square grid image instead of
+writing each frame separately:
+
+```bash
+cargo run -- --file input.mp4 --output-full-pane
+```
+
+The combined image is saved to `frames/full-pane.png` by default. It uses the
+same resize, format, JPEG quality, PNG compression, and frame sampling options
+as regular extraction.
+
 ### Extract One Frame Per Second
 
 To extract one frame per second using the seek-based method:
@@ -91,6 +105,8 @@ cargo run -- --file input.mp4 --multicore
 * `--jpeg-quality <1-100>`: JPEG quality when writing JPEGs (default: 90)
 * `--png-compression <fast|default|best>`: PNG compression level (default:
   `default`)
+* `--output-full-pane`: Save all extracted frames as one near-square grid image
+  at `frames/full-pane.<format>` instead of writing individual frame files
 
 ## Requirements
 

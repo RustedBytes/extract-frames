@@ -1,4 +1,5 @@
 use anyhow::{Context, Result, anyhow};
+use image::{Rgb, RgbImage};
 use std::fs::File;
 use std::fs::{create_dir_all, read_dir};
 use std::path::{Path, PathBuf};
@@ -6,8 +7,9 @@ use std::process::Command;
 use tempfile::tempdir;
 
 use crate::{
-    ImageFormat, OutputOptions, PngCompression, cleanup_temporary_files, decode_frames_dropping, decode_frames_seeking,
-    get_files, remove_files, remove_folder, save_rgb_to_image, split_into_segments,
+    ExtractedFrame, ImageFormat, OutputOptions, PngCompression, calculate_full_pane_grid, cleanup_temporary_files,
+    decode_frames_dropping, decode_frames_seeking, extract_frames_dropping, get_files, remove_files, remove_folder,
+    render_full_pane, save_rgb_to_image, split_into_segments,
 };
 
 fn default_output_options() -> OutputOptions {
@@ -34,13 +36,17 @@ fn default_output_options() -> OutputOptions {
 /// * If ffmpeg command fails to execute
 /// * If ffmpeg exits with non-zero status code
 fn create_dummy_video(dest: impl AsRef<Path>) -> Result<impl AsRef<Path>> {
+    create_dummy_video_with_duration(dest, 120)
+}
+
+fn create_dummy_video_with_duration(dest: impl AsRef<Path>, duration_seconds: u32) -> Result<impl AsRef<Path>> {
     // Generate a 120-second black video using ffmpeg (must be installed)
     let ffmpeg_result = Command::new("ffmpeg")
         .arg("-y")
         .arg("-f")
         .arg("lavfi")
         .arg("-i")
-        .arg("color=c=black:s=64x64:d=120:r=30")
+        .arg(format!("color=c=black:s=64x64:d={duration_seconds}:r=30"))
         .arg("-c:v")
         .arg("libx264")
         .arg(dest.as_ref())
@@ -386,7 +392,7 @@ fn test_decode_frames_dropping_creates_expected_frames() -> Result<()> {
     let frames = read_dir(frames_dir).context("Failed to read frames_dir")?;
     let png_files: Vec<_> = frames
         .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().map_or(false, |ext| ext == "png"))
+        .filter(|e| e.path().extension().is_some_and(|ext| ext == "png"))
         .collect();
 
     assert!(!png_files.is_empty(), "No PNG frames were created");
@@ -428,6 +434,108 @@ fn test_save_rgb_to_image_resizes_output() -> Result<()> {
     let resized = image::open(&img_path)?;
     assert_eq!(resized.width(), 2);
     assert_eq!(resized.height(), 1);
+
+    Ok(())
+}
+
+#[test]
+fn test_calculate_full_pane_grid() -> Result<()> {
+    assert_eq!(calculate_full_pane_grid(1)?, (1, 1));
+    assert_eq!(calculate_full_pane_grid(2)?, (2, 1));
+    assert_eq!(calculate_full_pane_grid(3)?, (2, 2));
+    assert_eq!(calculate_full_pane_grid(4)?, (2, 2));
+    assert_eq!(calculate_full_pane_grid(5)?, (3, 2));
+    assert_eq!(calculate_full_pane_grid(9)?, (3, 3));
+    assert!(calculate_full_pane_grid(0).is_err());
+
+    Ok(())
+}
+
+#[test]
+fn test_render_full_pane_arranges_frames() -> Result<()> {
+    let tmp_dir = tempdir()?;
+    let img_path = tmp_dir.path().join("full-pane.png");
+    let frames = vec![
+        ExtractedFrame {
+            source_index: 0,
+            image: RgbImage::from_pixel(2, 2, Rgb([255, 0, 0])),
+        },
+        ExtractedFrame {
+            source_index: 1,
+            image: RgbImage::from_pixel(2, 2, Rgb([0, 255, 0])),
+        },
+        ExtractedFrame {
+            source_index: 2,
+            image: RgbImage::from_pixel(2, 2, Rgb([0, 0, 255])),
+        },
+    ];
+
+    render_full_pane(&frames, &img_path, default_output_options())?;
+
+    let pane = image::open(&img_path)?.into_rgb8();
+    assert_eq!(pane.width(), 4);
+    assert_eq!(pane.height(), 4);
+    assert_eq!(*pane.get_pixel(0, 0), Rgb([255, 0, 0]));
+    assert_eq!(*pane.get_pixel(2, 0), Rgb([0, 255, 0]));
+    assert_eq!(*pane.get_pixel(0, 2), Rgb([0, 0, 255]));
+    assert_eq!(*pane.get_pixel(2, 2), Rgb([0, 0, 0]));
+
+    Ok(())
+}
+
+#[test]
+fn test_extract_full_pane_creates_only_combined_png() -> Result<()> {
+    let tmp_dir = tempdir()?;
+
+    let video_path = tmp_dir.path().join("input.mp4");
+    let frames_dir = tmp_dir.path().join("frames");
+
+    let video_path = create_dummy_video_with_duration(video_path, 2)?;
+    create_dir_all(&frames_dir)?;
+
+    let output_options = default_output_options();
+    let frames = extract_frames_dropping(video_path, &frames_dir, 30, output_options)?;
+    render_full_pane(&frames, frames_dir.join("full-pane.png"), output_options)?;
+
+    let files: Vec<_> = read_dir(frames_dir)
+        .context("Failed to read frames_dir")?
+        .filter_map(|e| e.ok())
+        .collect();
+
+    assert_eq!(files.len(), 1);
+    assert_eq!(files[0].file_name(), "full-pane.png");
+
+    Ok(())
+}
+
+#[test]
+fn test_extract_full_pane_saves_jpeg_with_resized_tiles() -> Result<()> {
+    let tmp_dir = tempdir()?;
+
+    let video_path = tmp_dir.path().join("input.mp4");
+    let frames_dir = tmp_dir.path().join("frames");
+    let img_path = frames_dir.join("full-pane.jpg");
+
+    let video_path = create_dummy_video_with_duration(video_path, 2)?;
+    create_dir_all(&frames_dir)?;
+
+    let mut output_options = default_output_options();
+    output_options.format = ImageFormat::Jpeg;
+    output_options.width = Some(16);
+
+    let frames = extract_frames_dropping(video_path, &frames_dir, 30, output_options)?;
+    render_full_pane(&frames, &img_path, output_options)?;
+
+    assert!(img_path.exists());
+    assert_eq!(
+        image::guess_format(&std::fs::read(&img_path)?)?,
+        image::ImageFormat::Jpeg
+    );
+
+    let pane = image::open(&img_path)?;
+    let (columns, rows) = calculate_full_pane_grid(frames.len())?;
+    assert_eq!(pane.width(), 16 * columns as u32);
+    assert_eq!(pane.height(), 16 * rows as u32);
 
     Ok(())
 }
